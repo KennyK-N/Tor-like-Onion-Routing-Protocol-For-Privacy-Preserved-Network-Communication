@@ -2,9 +2,12 @@ from enum import Enum
 from cryptography.hazmat.primitives import padding as sym_padding
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
 from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import keywrap
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.primitives import serialization
 import os
 
 # DONT TOUCH THESE or bad things may happen
@@ -17,12 +20,13 @@ class RelayFlag(Enum):
     MIDDLE=3
     NONE = 4 # Client or Server Node
 
-
 class Packet_Type(Enum):
-    DATA=1
-    EXCHANGE_SE=2 # For exchaning symmetric key
-    EXCHANGE_PKE=3 # FOr exchaning Public key with client
+    REQUEST=1
+    RESPONSE=2
+    EXCHANGE_SE=3 # For exchaning symmetric key
+    EXCHANGE_PKE=4 # FOr exchaning Public key with client
 
+# RSA Key Exchange Methods
 def one_way_key_exchange_encrypt(pub_key):
     secret_key = os.urandom(AES_key_length) #MESSAGE IS IN BYTE FORMAT ALREADY
     iv = os.urandom(iv_key_length)
@@ -48,6 +52,41 @@ def one_way_key_exchange_decrypt(private_key, encrypted_key):
     )
     return secret_key
 
+# Diffie-Hellman Key Exchange Methods
+# Generate private/public key pair
+def generate_dh_keypair():
+    """Generate private/public key pair"""
+    params = dh.generate_parameters(generator=2, key_size=2048)
+    private_key = params.generate_private_key()
+    public_key = private_key.public_key()
+    return private_key, public_key
+
+# Serialize public key so it can be sent on network
+def serialize_public_key(public_key):
+    return public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+# Get public key from serialized bytes
+def load_public_key(public_bytes):
+    return serialization.load_pem_public_key(public_bytes)
+
+# Lets client/relays get shared key using other party's public key
+def derive_shared_key(private_key, peer_public_key, salt):
+    shared_secret = private_key.exchange(peer_public_key)
+
+    derived_key = HKDF(
+        algorithm=hashes.SHA256(),
+        length=AES_key_length,
+        salt=salt,
+        info=b'handshake data',
+    ).derive(shared_secret)
+
+    return derived_key
+
+
+# Message encryption/decryption AES methods
 def create_cipher(key, iv):
     return Cipher(algorithms.AES(key), modes.CBC(iv))
 
