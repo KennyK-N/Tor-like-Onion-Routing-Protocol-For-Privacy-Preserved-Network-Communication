@@ -22,8 +22,7 @@ class RelayFlag(Enum):
 class Packet_Type(Enum):
     REQUEST=1
     RESPONSE=2
-    EXCHANGE_SE=3 # For exchaning symmetric key
-    EXCHANGE_PKE=4 # FOr exchaning Public key with client
+    EXCHANGE_DH=3 # For Diffie-Hellman exchange
 
 # RSA Key Exchange Methods
 def one_way_key_exchange_encrypt(pub_key):
