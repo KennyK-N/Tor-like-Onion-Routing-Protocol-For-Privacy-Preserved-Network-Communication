@@ -1,60 +1,73 @@
+import uuid
+import signal
 import sys
 import os
+import socket
 
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
+ACTIVE_PROXIES_DIR = "active_proxies"
 
-def generate_keys(proxy_id, folder_path):
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048
-    )
+class Proxy:
+    def __init__(self, host):
+        self.host = host
 
-    private_path = f"{folder_path}/{proxy_id}_private.pem"
-    public_path = f"{folder_path}/{proxy_id}_public.pem"
+        # Unique ID
+        self.proxy_id = str(uuid.uuid4())
 
-    # Prevent overwrite
-    if os.path.exists(private_path) or os.path.exists(public_path):
-        print(f"Proxy {proxy_id} keys already exist. Skipping generation.")
-        return
+        # Ensure active_proxies directory exists
+        os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True)
 
-    # Save private key
-    with open(private_path, "wb") as f:
-        f.write(private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            # No encryption for now cuz i don't wanna deal with it :)
-            encryption_algorithm=serialization.NoEncryption()
-        ))
+        # Create a TCP socket
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((host, 0))
+        self.host, self.port = self.sock.getsockname()
 
-    # Save public key
-    with open(public_path, "wb") as f:
-        f.write(private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ))
+        # File path for this proxy
+        self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
 
-    print(f"Proxy {proxy_id} keys generated.")
+        # Line to store in the file
+        self.entry = f"{self.proxy_id},{self.host},{self.port}\n"
+
+    def register(self):
+        with open(self.file_path, "w") as f:
+            f.write(self.entry)
+        print(f"Registered proxy {self.proxy_id} at {self.host}:{self.port}")
+
+    def unregister(self):
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+            print(f"Removed proxy {self.proxy_id} from active_proxies")
+            
+    def start(self):
+        self.sock.listen()
+        print(f"Proxy {self.proxy_id} listening on {self.host}:{self.port}")
+        try:
+            while True:
+                client_sock, addr = self.sock.accept()
+                print(f"Accepted connection from {addr}")
+                # TODO: handle onion/DH payloads here
+                client_sock.close()
+        finally:
+            self.unregister()
+
+
+# ---- graceful shutdown handling ----
+def setup_signal_handlers(proxy):
+    def shutdown_handler(signum, frame):
+        print("\nShutting down proxy...")
+        proxy.unregister()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
 
 def main():
-    if len(sys.argv) != 2:
-        print("Needs proxy_id as argument")
-        sys.exit(1)
+    HOST = "127.0.0.1"
 
-    folder_path = "relays_PKE_keys"
-    if not os.path.isdir(folder_path):
-        os.makedirs(folder_path)
+    proxy = Proxy(HOST)
+    proxy.register()
+    setup_signal_handlers(proxy)
+    proxy.start()
 
-    proxy_id = sys.argv[1]
-    relay_key_sub_folder = f"{folder_path}/relay_id_{proxy_id}"
-
-    if not os.path.isdir(relay_key_sub_folder):
-        os.makedirs(relay_key_sub_folder)
-
-
-    generate_keys(proxy_id, relay_key_sub_folder)
-
-
+# ---- MAIN ----
 if __name__ == "__main__":
     main()
-  
