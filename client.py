@@ -1,5 +1,7 @@
 import random
 import os
+import socket
+import threading
 
 import crypto_utils
 from cryptography.hazmat.primitives import serialization
@@ -21,11 +23,12 @@ def discover_proxies():
                 line = f.readline().strip()
                 # Each line format: proxy_id,host,port
                 parts = line.split(",")
-                if len(parts) >= 3:
-                    proxy_id, host, port = parts[0], parts[1], int(parts[2])
+                if len(parts) >= 4:
+                    proxy_id, host, port, public_key = parts[0], parts[1], int(parts[2]), parts[3]
                     proxies[proxy_id] = {
                         "host": host,
-                        "port": port
+                        "port": port,
+                        "public_key": public_key
                     }
 
     return proxies
@@ -40,51 +43,66 @@ def choose_circuit(proxies, k=3):
     return random.sample(proxy_ids, k)
 
 
+def listen_to_proxy(proxy_sock):
+    """Thread function: listen for incoming packets from the proxy"""
+    try:
+        while True:
+            data = proxy_sock.recv(4096)
+            # TODO: Use symmetric keys to decrypt data here before printing
+            if not data:
+                break
+            print(f"Received {len(data)} bytes from proxy: {data[:50]}...")
+    except Exception as e:
+        print(f"Listener thread error: {e}")
+    finally:
+        proxy_sock.close()
+        print("Connection closed.")
+
+# Connects to the first proxy in the circuit and starts a listener thread
+def connect_to_circuit(proxies, circuit):
+    first_proxy_id = circuit[0]
+    proxy_info = proxies[first_proxy_id]
+    host = proxy_info["host"]
+    port = proxy_info["port"]
+
+    proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    proxy_sock.connect((host, port))
+    print(f"Connected to first proxy {first_proxy_id} at {host}:{port}")
+
+    # Start listener thread
+    listener_thread = threading.Thread(target=listen_to_proxy, args=(proxy_sock,), daemon=True)
+    listener_thread.start()
+
+    return proxy_sock
+
+# Takes input and puts it in a layered packet to send through the circuit
+def send_input_to_proxy(proxy_sock):
+    try:
+        while True:
+            # Send a test message to first proxy (Delete later)
+            proxy_sock.sendall(b"Hello first proxy!")
+            msg = input("Enter message: ")
+            if msg.lower() in ("exit", "quit"):
+                break
+            # TODO: put msg in layered packet encrypted with symmetric keys before sending
+            proxy_sock.sendall(msg.encode())
+    except Exception as e:
+        print(f"Input thread error: {e}")
+    finally:
+        proxy_sock.close()
+        print("Input thread shutting down.")
+
 def main():
     proxies = discover_proxies()
 
-    print("[Client] Available proxies:", list(proxies.keys()))
+    print("Available proxies:", list(proxies.keys()))
     circuit = choose_circuit(proxies, 3)
-    print("[Client] Chosen circuit:", circuit)
+    print("Chosen circuit:", circuit)
+    # Connect to first proxy and start listener
+    proxy_sock = connect_to_circuit(proxies, circuit)
 
-    # Load selected public keys
-    # public_keys = {}
-    # for proxy_id in circuit:
-    #     path = f"{folder_path}/{sub_folder_path}{proxy_id}/{proxies[proxy_id]}"
-    #     public_keys[proxy_id] = load_public_key(path)
+    send_input_to_proxy(proxy_sock)
 
-    # print("[Client] Loaded public keys for circuit")
-    # print(public_keys)
-    
-    # Del later Test
-    # print(public_keys["1"].public_bytes(
-    # encoding=serialization.Encoding.PEM,
-    # format=serialization.PublicFormat.SubjectPublicKeyInfo
-    # ).decode())
-    # message = "encrypted data"
-
-    # # PUT IN RELAY LATER CUZ WE NEED PRIVATE KEYS
-    # def load_private_key(path):
-    #     with open(path, "rb") as f:
-    #         return serialization.load_pem_private_key(f.read(), password=None)
-    
-    # private_key = {}
-    # for proxy_id in circuit:
-    #     path = f"{folder_path}/{sub_folder_path}{proxy_id}/{proxy_id}_private.pem"
-    #     private_key[proxy_id] = load_private_key(path)
-
-    # # Test
-    # stuff = crypto_utils.one_way_key_exchange_encrypt(public_keys["1"])
-    # key= crypto_utils.one_way_key_exchange_decrypt(private_key["1"], stuff["encrypted_key"])
-
-    # message = b"Iaaaaa"
-
-    # cipher1 = crypto_utils.create_cipher(stuff["secret_key"], stuff["iv"])
-    # cipher2 = crypto_utils.create_cipher(key, stuff["iv"])
-
-    # ct = crypto_utils.aes_encrypt(cipher1, message)
-    # print(crypto_utils.aes_decrypt(cipher2, ct))
-    #TODO: Use public keys to encrypt for one-way key exchange
 
 
 if __name__ == "__main__":
