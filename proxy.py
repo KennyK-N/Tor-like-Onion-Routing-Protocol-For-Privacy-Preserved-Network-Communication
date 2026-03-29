@@ -4,14 +4,14 @@ import os
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 
-def generate_keys(proxy_id):
+def generate_keys(proxy_id, folder_path):
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048
     )
 
-    private_path = f"{proxy_id}_private.pem"
-    public_path = f"{proxy_id}_public.pem"
+    private_path = f"{folder_path}/{proxy_id}_private.pem"
+    public_path = f"{folder_path}/{proxy_id}_public.pem"
 
     # Prevent overwrite
     if os.path.exists(private_path) or os.path.exists(public_path):
@@ -41,8 +41,18 @@ def main():
         print("Needs proxy_id as argument")
         sys.exit(1)
 
+    folder_path = "relays_PKE_keys"
+    if not os.path.isdir(folder_path):
+        os.makedirs(folder_path)
+
     proxy_id = sys.argv[1]
-    generate_keys(proxy_id)
+    relay_key_sub_folder = f"{folder_path}/relay_id_{proxy_id}"
+
+    if not os.path.isdir(relay_key_sub_folder):
+        os.makedirs(relay_key_sub_folder)
+
+
+    generate_keys(proxy_id, relay_key_sub_folder)
 
 
 if __name__ == "__main__":
