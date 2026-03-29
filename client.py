@@ -3,7 +3,8 @@ import os
 
 from cryptography.hazmat.primitives import serialization
 
-
+folder_path = "./relays_PKE_keys"
+sub_folder_path = "relay_id_"
 def load_public_key(path):
     with open(path, "rb") as f:
         return serialization.load_pem_public_key(f.read())
@@ -12,10 +13,12 @@ def load_public_key(path):
 def discover_proxies():
     proxies = {}
 
-    for file in os.listdir("."):
-        if file.endswith("_public.pem"):
-            proxy_id = file.replace("_public.pem", "")
-            proxies[proxy_id] = file
+    for folder in os.listdir(folder_path):
+        full_folder_path = os.path.join(folder_path, folder)
+        for file in os.listdir(full_folder_path):
+            if file.endswith("_public.pem") and "client" not in file:
+                proxy_id = file.replace("_public.pem", "")
+                proxies[proxy_id] = file
 
     return proxies
 
@@ -39,10 +42,17 @@ def main():
     # Load selected public keys
     public_keys = {}
     for proxy_id in circuit:
-        path = proxies[proxy_id]
+        path = f"{folder_path}/{sub_folder_path}{proxy_id}/{proxies[proxy_id]}"
         public_keys[proxy_id] = load_public_key(path)
 
     print("[Client] Loaded public keys for circuit")
+    
+    # Del later
+    print(public_keys)
+    print(public_keys["1"].public_bytes(
+    encoding=serialization.Encoding.PEM,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode())
 
     #TODO: Use public keys to encrypt for one-way key exchange
 
