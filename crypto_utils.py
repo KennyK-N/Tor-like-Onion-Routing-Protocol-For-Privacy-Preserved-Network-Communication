@@ -20,7 +20,8 @@ class RelayFlag(Enum):
 
 class Packet_Type(Enum):
     DATA=1
-    EXCHANGE=2 # For exchaning symmetric key
+    EXCHANGE_SE=2 # For exchaning symmetric key
+    EXCHANGE_PKE=3 # FOr exchaning Public key with client
 
 def one_way_key_exchange_encrypt(pub_key):
     secret_key = os.urandom(AES_key_length) #MESSAGE IS IN BYTE FORMAT ALREADY
