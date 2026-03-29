@@ -33,7 +33,7 @@ class Proxy:
 
         # Info file for this proxy
         self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
-        self.entry = f"{self.proxy_id},{self.host},{self.port},{pub_key_pem_str}\n" # might need new line before public key, not sure
+        self.entry = f"{self.proxy_id},{self.host},{self.port},{pub_key_pem_str}\n" 
 
         self.running = True
 
