@@ -15,6 +15,12 @@ class Proxy:
         self.proxy_id = str(uuid.uuid4())
         os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True) # make sure directory exists
 
+        # Make DH key pair
+        self.ecdh_private, self.ecdh_public = crypto_utils.generate_ecdh_keypair()
+        # Serialize public key to save in file
+        pub_key_pem_str = crypto_utils.serialize_public_key(self.ecdh_public).decode('utf-8')
+
+
         # Socket for incoming connections (from prev node)
         self.prev_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.prev_sock.bind((host, 0))
@@ -27,7 +33,7 @@ class Proxy:
 
         # Info file for this proxy
         self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
-        self.entry = f"{self.proxy_id},{self.host},{self.port}\n"
+        self.entry = f"{self.proxy_id},{self.host},{self.port},{pub_key_pem_str}\n" # might need new line before public key, not sure
 
         self.running = True
 
@@ -58,6 +64,8 @@ class Proxy:
                 if not data:
                     break
                 print(f"Received {len(data)} bytes from prev node")
+                # TODO: decrypt layer before checking packet type and forwarding
+
                 # Check the packet type and handle accordingly
                 packet_type = crypto_utils.Packet_Type.REQUEST.value # For now just assume it's a request
                 if packet_type == crypto_utils.Packet_Type.REQUEST.value:
@@ -74,6 +82,9 @@ class Proxy:
                         threading.Thread(target=self.handle_next_node, daemon=True).start()
                 elif packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
                     # Handle Diffie-Hellman exchange packet
+                    # Since proxy public key is saved in file, actually don't need to send it back, 
+                    # just need to send back the salt to use in crypto_derive_shared_key() 
+                    # Although we could also send public key back with salt instead of saving it in file, it's ur choice
                     pass
                 
         except Exception as e:
