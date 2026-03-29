@@ -12,52 +12,29 @@ def generate_keys(proxy_id, folder_path):
 
     private_path = f"{folder_path}/{proxy_id}_private.pem"
     public_path = f"{folder_path}/{proxy_id}_public.pem"
-    private_path_client = f"{folder_path}/client_private.pem"
-    public_path_client = f"{folder_path}/client_public.pem"
 
     # Prevent overwrite
     if os.path.exists(private_path) or os.path.exists(public_path):
         print(f"Proxy {proxy_id} keys already exist. Skipping generation.")
-    else:
-        # Save private key
-        with open(private_path, "wb") as f:
-            f.write(private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                # No encryption for now cuz i don't wanna deal with it :)
-                encryption_algorithm=serialization.NoEncryption()
-            ))
+        return
 
-        # Save public key
-        with open(public_path, "wb") as f:
-            f.write(private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            ))
+    # Save private key
+    with open(private_path, "wb") as f:
+        f.write(private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            # No encryption for now cuz i don't wanna deal with it :)
+            encryption_algorithm=serialization.NoEncryption()
+        ))
 
-        print(f"Proxy {proxy_id} keys generated.")
+    # Save public key
+    with open(public_path, "wb") as f:
+        f.write(private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ))
 
-    # Prevent overwrite
-    if os.path.exists(private_path_client) or os.path.exists(public_path_client):
-        print(f"Proxy {proxy_id} keys for clients already exist. Skipping generation.")
-    else:
-        # Save private key for client
-        with open(private_path_client, "wb") as f:
-            f.write(private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                # No encryption for now cuz i don't wanna deal with it :)
-                encryption_algorithm=serialization.NoEncryption()
-            ))
-
-        # Save public key for client
-        with open(public_path_client, "wb") as f:
-            f.write(private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            ))
-
-        print(f"Proxy {proxy_id} keys generated for client.")
+    print(f"Proxy {proxy_id} keys generated.")
 
 def main():
     if len(sys.argv) != 2:

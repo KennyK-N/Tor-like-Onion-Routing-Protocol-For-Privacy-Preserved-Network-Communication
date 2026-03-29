@@ -1,9 +1,10 @@
 import json
 import pickle
-from crypto_utils import RelayFlag
+from crypto_utils import RelayFlag, Packet_Type
 
 class Packet:
-    def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type):
+    def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type, packet_type):
+        self.packet_type = packet_type
         self.relay_type = relay_type
         self.src_addr = src_addr
         self.src_port = src_port
@@ -13,6 +14,7 @@ class Packet:
     
     def to_json(self):
         dict_ = {
+            'packet_type': self.packet_type,
             'src_addr': self.src_addr,
             'src_port': self.src_port,
             'dest_addr': self.dest_addr,
@@ -27,6 +29,7 @@ def from_json_to_packet(packet_json):
     payload = dict_['payload']
 
     return Packet(
+        packet_type=dict_['packet_type'],
         src_addr=dict_['src_addr'],
         src_port=dict_['src_port'],
         dest_addr=dict_['dest_addr'],
@@ -37,7 +40,7 @@ def from_json_to_packet(packet_json):
 
 class Onion_Packet:
     def __init__(self, packet, num_layer):
-        self.num_layer = num_layer #decrement every time a layer is removed, increment when we add a layer
+        self.num_layer = num_layer #Basically a counter, decrement every time a layer is removed, increment when we add a layer
         packet = packet # Add the corresponding packet from the corresponding decryption or encryption
 
 
@@ -48,7 +51,8 @@ def test():
         dest_addr="server",
         dst_port=8080,
         payload="test message",
-        relay_type=RelayFlag.EXIT.name
+        relay_type=RelayFlag.EXIT.name,
+        packet_type = Packet_Type.DATA.value
     )
     middle = Packet(
         src_addr="relay1",
@@ -56,7 +60,8 @@ def test():
         dest_addr="relay2",
         dst_port=5000,
         payload=inner.to_json(),
-        relay_type=RelayFlag.ENTRY.name
+        relay_type=RelayFlag.ENTRY.name,
+        packet_type = Packet_Type.DATA.value
     )
     outer = Packet (
         src_addr="client",
@@ -64,7 +69,8 @@ def test():
         dest_addr="relay1",
         dst_port=5000,
         payload=middle.to_json(),
-        relay_type= RelayFlag.NONE.name
+        relay_type= RelayFlag.NONE.name,
+        packet_type = Packet_Type.DATA.value
     )
 
     json_str = outer.to_json()
