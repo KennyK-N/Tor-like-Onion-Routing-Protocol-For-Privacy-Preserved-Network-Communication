@@ -47,16 +47,16 @@ class Proxy:
             os.remove(self.file_path)
             print(f"Removed proxy {self.proxy_id} from active_proxies")
 
+    # Create a socket for the next node in the circuit (or the server)
     def set_next_node(self, host, port):
-        """Set the next node (proxy/server) to forward messages to"""
         self.next_host = host
         self.next_port = port
         self.next_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.next_sock.connect((host, port))
         print(f"Connected to next node at {host}:{port}")
 
+    # Handle client->server communication
     def handle_client_to_server(self):
-        """Thread: Handle previous node / client data"""
         print(f"Incoming thread handling connection from prev node")
         try:
             while self.running:
@@ -64,10 +64,12 @@ class Proxy:
                 if not data:
                     break
                 print(f"Received {len(data)} bytes from prev node")
+                # Echo back for testing (DELETE LATER)
+                self.prev_sock.sendall(data)
                 # TODO: decrypt layer before checking packet type and forwarding
 
                 # Check the packet type and handle accordingly
-                packet_type = crypto_utils.Packet_Type.REQUEST.value # For now just assume it's a request
+                packet_type = None # TODO: get packet type from decrypted packet
                 if packet_type == crypto_utils.Packet_Type.REQUEST.value:
                     # TODO: Create next_sock with packet info if not already connected
                     if self.next_sock is None:
@@ -79,7 +81,7 @@ class Proxy:
                     print(f"Sent {len(data)} bytes to next node")
                     # If no thread for next node connection, start one
                     if self.next_sock is None:
-                        threading.Thread(target=self.handle_next_node, daemon=True).start()
+                        threading.Thread(target=self.handle_server_to_client, daemon=True).start()
                 elif packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
                     # Handle Diffie-Hellman exchange packet
                     # Since proxy public key is saved in file, actually don't need to send it back, 
@@ -93,8 +95,8 @@ class Proxy:
             self.prev_sock.close()
             print(f"Closed connection from prev node")
 
+    # Handle server->client communication
     def handle_server_to_client(self):
-        """Thread: Send data from the queue to the next node"""
         print(f"Outgoing thread started for next node at {self.next_host}:{self.next_port}")
         try:
             while self.running:
@@ -118,8 +120,8 @@ class Proxy:
         print(f"Proxy {self.proxy_id} listening on {self.host}:{self.port}")
         try:
             while self.running:
-                prev_sock, addr = self.prev_sock.accept()
-                self.handle_prev_node(prev_sock, addr)
+                self.prev_sock, _ = self.prev_sock.accept()
+                self.handle_client_to_server()
                 
         finally:
             self.unregister()
