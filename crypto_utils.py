@@ -1,13 +1,12 @@
 from enum import Enum
 from cryptography.hazmat.primitives import padding as sym_padding
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import keywrap
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.asymmetric import dh
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 import os
 
 # DONT TOUCH THESE or bad things may happen
@@ -54,10 +53,9 @@ def one_way_key_exchange_decrypt(private_key, encrypted_key):
 
 # Diffie-Hellman Key Exchange Methods
 # Generate private/public key pair
-def generate_dh_keypair():
+def generate_ecdh_keypair(curve=ec.SECP256R1()):
     """Generate private/public key pair"""
-    params = dh.generate_parameters(generator=2, key_size=2048)
-    private_key = params.generate_private_key()
+    private_key = ec.generate_private_key(curve)
     public_key = private_key.public_key()
     return private_key, public_key
 
@@ -74,7 +72,7 @@ def load_public_key(public_bytes):
 
 # Lets client/relays get shared key using other party's public key
 def derive_shared_key(private_key, peer_public_key, salt):
-    shared_secret = private_key.exchange(peer_public_key)
+    shared_secret = private_key.exchange(ec.ECDH(), peer_public_key)
 
     derived_key = HKDF(
         algorithm=hashes.SHA256(),
