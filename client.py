@@ -6,8 +6,10 @@ import threading
 import crypto_utils
 import packet as PacketFormat
 from cryptography.hazmat.primitives import serialization
+import queue
 
 ACTIVE_PROXIES_DIR = "active_proxies"
+CLIENT_DH_KEY = {}
 
 def discover_proxies():
     proxies = {}
