@@ -7,7 +7,7 @@ import crypto_utils
 import packet as PacketFormat
 from cryptography.hazmat.primitives import serialization
 import queue
-
+import pickle 
 ACTIVE_PROXIES_DIR = "active_proxies"
 CLIENT_DH_KEY = {}
 
@@ -55,6 +55,8 @@ def listen_to_proxy(proxy_sock):
             if not data:
                 break
             print(f"Received {len(data)} bytes from proxy: {data[:50]}...")
+            """ ------------TEST CODE------------"""
+            print(pickle.loads(data)) 
     except Exception as e:
         print(f"Listener thread error: {e}")
     finally:
@@ -79,16 +81,21 @@ def connect_to_circuit(proxies, circuit):
     return proxy_sock
 
 # Takes input and puts it in a layered packet to send through the circuit
-def send_input_to_proxy(proxy_sock):
+def send_input_to_proxy(proxy_sock, circuit, proxies):
     try:
         while True:
             # Send a test message to first proxy (Delete later)
-            proxy_sock.sendall(b"Hello first proxy!")
+            """ ------------TEST CODE IN HERE------------"""
             msg = input("Enter message: ")
             if msg.lower() in ("exit", "quit"):
                 break
             # TODO: put msg in layered packet encrypted with symmetric keys before sending
-            proxy_sock.sendall(msg.encode())
+            test = []
+            for i in range(len(circuit) - 1, -1, -1):
+                test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"]})
+            
+            test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
+            proxy_sock.sendall(pickle.dumps(test))
     except Exception as e:
         print(f"Input thread error: {e}")
     finally:
@@ -132,7 +139,7 @@ def main():
     #UNCOMMENT THIS FOR TESTING PURPOSE
     proxy_sock = connect_to_circuit(proxies, circuit)
 
-    send_input_to_proxy(proxy_sock)
+    send_input_to_proxy(proxy_sock, circuit, proxies)
 
 
 

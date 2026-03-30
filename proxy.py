@@ -7,8 +7,10 @@ import threading
 import queue
 import crypto_utils
 from threading import Lock
+import pickle
 
 ACTIVE_PROXIES_DIR = "active_proxies"
+HOST = "127.0.0.1"
 # FOr demo purposes leave it like this for now other wise it will take forever to clean up
 RECEIVE_TIMEOUT = 5
 RELAY_TIMEOUT = 5
@@ -62,6 +64,50 @@ class Proxy:
             os.remove(self.file_path)
             print(f"Removed proxy {self.proxy_id} from active_proxies")
 
+    def relay_send(self, client_name, data):
+        sock = self.send_sockets.get(client_name)
+        if not sock:
+            print(f"No socket found for {client_name}")
+            return False
+        try:
+            sock.sendall(data) 
+            return True
+        except Exception as e:
+            print(f"Error sending to {client_name}: {e}, closing socket.")
+            try:
+                sock.close()
+            except Exception as close_err:
+                print(f"Error closing socket for {client_name}: {close_err}")
+            finally:
+                self.send_sockets.pop(client_name, None)
+                return False
+
+    # Handle Server-> Client Commmunication
+    def forward_listener(self, forward_sock, client_sock):
+        try:
+            forward_sock.settimeout(RECEIVE_TIMEOUT)
+            while self.running:
+                try:
+                    data = forward_sock.recv(4096)
+                except socket.timeout:
+                    break
+                if not data:
+                    break
+                """ TEST CODE"""
+                data = pickle.loads(data)
+                message = data[-1]
+                message["count"] += 1
+                print(data)
+                """ TEST CODE"""
+                client_sock.sendall(pickle.dumps(data)) 
+        except Exception as e:
+            print(f"Forward listener error: {e}")
+        finally:
+            try:
+                forward_sock.close()
+            except Exception:
+                pass
+
     # Handle client->server communication
     def relay_logic(self, client_sock, socket_name):
         print(f"Incoming thread handling connection from prev node")
@@ -93,13 +139,43 @@ class Proxy:
                     else:
                         retry_counter_data += 1
                         continue
-
+                
                 retry_counter_data = 0
 
+                """ TEST CODE"""
+                # DElete later ofr testing purpose    
+                if isinstance(data, bytes):
+                    data = pickle.loads(data)
+                    
                 #print(f"Received {len(data)} bytes from prev node")
+
                 # Echo back for testing (DELETE LATER)
                 print(f"\nData is {data}")
-                client_sock.sendall(data)
+                message = data[-1]
+                forward_sock = None 
+                
+                if message["type"] == "decrement":
+                    if message["count"] == 0:
+                        message["type"] = "increment"
+                        message["data"] = "response from exit"
+                        print(data)
+                        client_sock.sendall(pickle.dumps(data))
+                    else:
+                        message["count"] = message["count"] - 1
+                        # Code logic to adapt for final implementation
+                        if forward_sock is None:
+                            # Creates a new socket maybe use a dictionary to avoid creating sockets
+                            forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            forward_sock.connect((data[message["count"]]["host"], data[message["count"]]["port"]))
+                            # start listener thread so we can receive the response back
+                            t = threading.Thread(
+                                target=self.forward_listener,
+                                args=(forward_sock, client_sock),
+                                daemon=True
+                            )
+                            t.start()
+                        forward_sock.sendall(pickle.dumps(data))
+                """ TEST CODE"""
 
                 '''
                 HERE WE DECRYPT AND BREAK DOWN THE PACKET AND PREPARE IT FOR SENDING
@@ -134,7 +210,7 @@ class Proxy:
                     pass
                 
                 else:
-                    continue
+                    pass
                 '''
                 I dont know if any thing pass here or resources will be guaranteed to be cleaned up this is because im using daemon for internal threads
                 #####HERE WE SEND THE PACKET FINALLY IN THIS AREA, WE USE ANOTHER WHILE LOOP WITH A RETRY COUNTER for send no need to time out since non blocking, and if that fials just kill the connection
@@ -170,6 +246,7 @@ class Proxy:
                     target=self.relay_logic,
                     args=(client_sock,socket_name,), daemon=True
                 )
+
                 t.start()
             except socket.timeout:
                 pass
@@ -217,8 +294,6 @@ def setup_signal_handlers(proxy):
     signal.signal(signal.SIGTERM, shutdown_handler)
 
 def main():
-    HOST = "127.0.0.1"
-
     proxy = Proxy(HOST)
     proxy.register()
     setup_signal_handlers(proxy)
