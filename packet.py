@@ -74,6 +74,5 @@ def test():
     print(outer)
     print(to_obj_rep(to_obj_rep(outer).payload))
     
-#TODO LATER: change the implementation to use pickles rather than json
 if __name__ == "__main__":
     test()
