@@ -18,20 +18,21 @@ class Respond_Packet:
         self.dst_port = dst_port # NEED TO BE ENCRYPTED
         self.payload = payload # THIS IS ENCRYPTED AS IT TRAVELS FROM THE SERVER TO THE CLIENT AND DECRYPTED AT THE CLIENT
 
-class Request_Packet:
-    def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type):
+class Data_packet:
+    def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type, relay_id):
         self.relay_type = relay_type
         self.src_addr = src_addr
         self.src_port = src_port
         self.dest_addr = dest_addr
         self.dst_port = dst_port
         self.payload = payload # can either be the actual message or the another packet object, either way this will be encrypted by the client, and decrypted as it traverses
+        self.relay_id = relay_id
 
 class Onion_Packet:
-    def __init__(self, Request_packet, Respond_packet, num_layer, packet_type):
+    def __init__(self, Data_packet, num_layer, packet_type, Respond_packet=None):
         self.packet_type = packet_type
         self.num_layer = num_layer #Basically a counter, decrement every time a layer is removed, increment when we add a layer
-        self.Request_Packet = Request_packet # Add the corresponding packet from the corresponding decryption or encryption
+        self.Data_packet = Data_packet # Add the corresponding packet from the corresponding decryption or encryption
         self.Respond_Packet = Respond_packet
 
 def to_bytes_rep(packet):
@@ -41,29 +42,32 @@ def to_obj_rep(packet):
     return pickle.loads(packet)
     
 def test():
-    inner = Request_Packet(
+    inner = Data_packet(
         src_addr="relay2",
         src_port=5001,
         dest_addr="server",
         dst_port=8080,
         payload= "test message",
-        relay_type= RelayFlag.EXIT.name,
+        relay_type= RelayFlag.RELAY.name,
+        relay_id=None
     )
-    middle = Request_Packet(
+    middle = Data_packet(
         src_addr="relay1",
         src_port=4000,
         dest_addr="relay2",
         dst_port=5000,
         payload=to_bytes_rep(inner),
-        relay_type=RelayFlag.ENTRY.name,
+        relay_type=RelayFlag.RELAY.name,
+        relay_id=None
     )
-    outer = Request_Packet (
+    outer = Data_packet (
         src_addr="client",
         src_port=4000,
         dest_addr="relay1",
         dst_port=5000,
         payload=to_bytes_rep(middle),
         relay_type= RelayFlag.NONE.name,
+        relay_id=None
     )
 
     outer = to_bytes_rep(outer)
@@ -71,3 +75,5 @@ def test():
     print(to_obj_rep(to_obj_rep(outer).payload))
     
 #TODO LATER: change the implementation to use pickles rather than json
+if __name__ == "__main__":
+    test()

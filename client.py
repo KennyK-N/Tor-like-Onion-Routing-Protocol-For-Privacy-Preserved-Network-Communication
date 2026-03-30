@@ -10,6 +10,7 @@ import queue
 import pickle 
 ACTIVE_PROXIES_DIR = "active_proxies"
 CLIENT_DH_KEY = None # This is dictionary, {relay id: Se key}
+MIN_PROXY = 3
 """
 Only do DH exchange if key None 
 """
@@ -42,7 +43,7 @@ def discover_proxies():
 def choose_circuit(proxies, k=3):
     proxy_ids = list(proxies.keys())
 
-    if len(proxy_ids) < k:
+    if len(proxy_ids) < MIN_PROXY:
         raise ValueError("Not enough proxies available")
 
     return random.sample(proxy_ids, k)
@@ -94,7 +95,7 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
             # TODO: put msg in layered packet encrypted with symmetric keys before sending
             test = []
             for i in range(len(circuit) - 1, -1, -1):
-                test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"]})
+                test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"], "id": circuit[i]})
             
             test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
             proxy_sock.sendall(pickle.dumps(test))
