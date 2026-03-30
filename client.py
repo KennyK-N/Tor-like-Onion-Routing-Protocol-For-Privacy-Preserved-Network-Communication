@@ -9,8 +9,10 @@ from cryptography.hazmat.primitives import serialization
 import queue
 import pickle 
 ACTIVE_PROXIES_DIR = "active_proxies"
-CLIENT_DH_KEY = {}
-
+CLIENT_DH_KEY = None # This is dictionary, {relay id: Se key}
+"""
+Only do DH exchange if key None 
+"""
 def discover_proxies():
     proxies = {}
 
