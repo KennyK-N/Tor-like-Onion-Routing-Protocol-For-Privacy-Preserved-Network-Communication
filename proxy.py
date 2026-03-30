@@ -8,6 +8,7 @@ import queue
 import crypto_utils
 from threading import Lock
 import pickle
+import packet as PacketFormat
 
 ACTIVE_PROXIES_DIR = "active_proxies"
 HOST = "127.0.0.1"
@@ -93,13 +94,23 @@ class Proxy:
                     break
                 if not data:
                     break
-                """ TEST CODE"""
+
+                """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""
                 data = pickle.loads(data)
                 message = data[-1]
                 message["count"] += 1
                 print(data)
-                """ TEST CODE"""
-                client_sock.sendall(pickle.dumps(data)) 
+                client_sock.sendall(PacketFormat.to_bytes_rep(data)) 
+                """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""
+
+                #TODO:
+                """
+                if packet_type == crypto_utils.Packet_Type.REQUEST.value:
+                    Further encrypt the payload with the current key then send
+                    client_sock.sendall(PacketFormat.to_bytes_rep(data)) 
+                elif packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
+                    client_sock.sendall(PacketFormat.to_bytes_rep(data)) 
+                """
         except Exception as e:
             print(f"Forward listener error: {e}")
         finally:
@@ -115,7 +126,6 @@ class Proxy:
         NUM_ATTEMPTS_DATA = 10
         NUM_ATTEMPTS_TIME_OUT = 2
         retry_counter_timeout = 0
-        forward_sock = None 
         try:
             client_sock.settimeout(RECEIVE_TIMEOUT)
             while self.running:
@@ -142,17 +152,16 @@ class Proxy:
                 
                 retry_counter_data = 0
 
-                """ TEST CODE"""
-                # DElete later ofr testing purpose    
+                """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""  
                 if isinstance(data, bytes):
                     data = pickle.loads(data)
                 else:
                     continue  
-                #print(f"Received {len(data)} bytes from prev node")
 
                 # Echo back for testing (DELETE LATER)
                 message = data[-1]
                 print(f"\nData is {data[message['count']]}")
+                forward_sock = None 
 
                 if message["type"] == "decrement":
                     if message["count"] == 0:
@@ -175,28 +184,34 @@ class Proxy:
                             )
                             t.start()
                         forward_sock.sendall(pickle.dumps(data))
-                """ TEST CODE"""
-
-                '''
-                HERE WE DECRYPT AND BREAK DOWN THE PACKET AND PREPARE IT FOR SENDING
-                '''
+                """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""
 
                 # TODO: decrypt layer before checking packet type and forwarding
                 # Check the packet type and handle accordingly
-                packet_type = None # TODO: get packet type from decrypted packet
+                packet_type = None # TODO: get packet type from Onion Packet OBJ
+                
                 if packet_type == crypto_utils.Packet_Type.REQUEST.value:
-                    # TODO: Create next_sock with packet info if not already connected
-                    if self.next_sock is None:
-                        # Use packet info to connect to next node here
-                        # self.set_next_node(next_host, next_port)
-                        pass
-                    # Forward request packet
-                    self.next_sock.sendall(data)
-                    print(f"Sent {len(data)} bytes to next node")
+                    # TODO: decrypt the payload, and construct the proper packet to send, while extracting the dest addr and port of the payload we decrypted
+                    packet = None
 
-                    # # If no thread for next node connection, start one
-                    # if self.next_sock is None:
-                    #     threading.Thread(target=self.handle_server_to_client, daemon=True).start()
+                    forward_sock = None 
+
+                    if forward_sock is None:
+                        forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        #TODO:
+                        # connect to the next relay's destination addr and port 
+                        #forward_sock.connect()
+                        
+                        # start listener thread so we can receive the response back
+                        t = threading.Thread(
+                            target=self.forward_listener,
+                            args=(forward_sock, client_sock),
+                            daemon=True
+                        )
+                        t.start()
+
+                        forward_sock.sendall(PacketFormat.to_bytes_rep(packet))
+
                 elif packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
                     # Handle Diffie-Hellman exchange packet
                     # Since proxy public key is saved in file, actually don't need to send it back, 
@@ -204,19 +219,33 @@ class Proxy:
                     # Although we could also send public key back with salt instead of saving it in file, it's ur choice
                     
 
-                    # Create another connection to communicate with the client directly and send the packet here to the client
+                    # TODO:
+                    if(1): # Delete Later
+                    #if Onion_Packet object.num_layer == 0 or can just check if Onion_Packet.Data_packet.relay_id == self.relay_id
+                        client_sock.sendall(PacketFormat.to_bytes_rep(data))
+        
+                    else:
+                        #decrement onion packet counter
+                        forward_sock = None 
+                        #perform this logic which is similar to above:
+                        if forward_sock is None:
+                            forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            #TODO:
+                            # connect to the next relay's destination addr and port 
+                            #forward_sock.connect()
+                            
+                            # start listener thread so we can receive the response back
+                            t = threading.Thread(
+                                target=self.forward_listener,
+                                args=(forward_sock, client_sock),
+                                daemon=True
+                            )
+                            t.start()
+
+                            forward_sock.sendall(PacketFormat.to_bytes_rep(packet))
+                    
                     pass
-                elif packet_type == crypto_utils.Packet_Type.RESPONSE.value:
-                    pass
-                
-                else:
-                    pass
-                '''
-                I dont know if any thing pass here or resources will be guaranteed to be cleaned up this is because im using daemon for internal threads
-                #####HERE WE SEND THE PACKET FINALLY IN THIS AREA, WE USE ANOTHER WHILE LOOP WITH A RETRY COUNTER for send no need to time out since non blocking, and if that fials just kill the connection
-                
-                # ESSENTIALLY REQUEST AND RESPONSE ONLY HAS THE RELAY SEND ONCE, BUT EXCHANGE_DH HAS THE RELAY SEND TWICE, ONCE TO THE CLIENT FOR THE SALT, AND TO FORWARD THE PACKET TO THE NEXT RELAY
-                '''
+
         except Exception as e:
             print(f"Incoming error: {e}")
 
@@ -262,7 +291,7 @@ class Proxy:
                                            )
             self.thread.start()
 
-            #TODO: possibly want a nother thread so we can interactable relay
+            #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
             while(True):
                 temp = input("For menu or smthing: ")
                 if (temp == "exit"): # THIS EXIT IS GOOD
@@ -313,6 +342,7 @@ def main():
         send_socket_list[key].close()
 
     proxy.relay_socket.close()
+
 # ---- MAIN ----
 if __name__ == "__main__":
     main()

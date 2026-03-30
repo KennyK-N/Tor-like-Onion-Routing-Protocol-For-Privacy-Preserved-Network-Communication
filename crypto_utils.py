@@ -22,33 +22,34 @@ class RelayFlag(Enum):
 class Packet_Type(Enum):
     REQUEST=1
     RESPONSE=2
-    EXCHANGE_DH=3 # For Diffie-Hellman exchange
+    EXCHANGE_DH = 3 # For Diffie-Hellman exchange
+    # DATA = 4
 
 # RSA Key Exchange Methods
-def one_way_key_exchange_encrypt(pub_key):
-    secret_key = os.urandom(AES_key_length) #MESSAGE IS IN BYTE FORMAT ALREADY
-    iv = os.urandom(iv_key_length)
-    encrypted_key = pub_key.encrypt(
-        secret_key,
-        asym_padding.OAEP(
-            mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    # i dont know if we need encrypt iv or not but u can check later for me thx :)
-    return {"encrypted_key": encrypted_key, "secret_key": secret_key, "iv": iv}
+# def one_way_key_exchange_encrypt(pub_key):
+#     secret_key = os.urandom(AES_key_length) #MESSAGE IS IN BYTE FORMAT ALREADY
+#     iv = os.urandom(iv_key_length)
+#     encrypted_key = pub_key.encrypt(
+#         secret_key,
+#         asym_padding.OAEP(
+#             mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
+#             algorithm=hashes.SHA256(),
+#             label=None
+#         )
+#     )
+#     # i dont know if we need encrypt iv or not but u can check later for me thx :)
+#     return {"encrypted_key": encrypted_key, "secret_key": secret_key, "iv": iv}
 
-def one_way_key_exchange_decrypt(private_key, encrypted_key):
-    secret_key = private_key.decrypt(
-        encrypted_key,
-        asym_padding.OAEP(
-            mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
-        )
-    )
-    return secret_key
+# def one_way_key_exchange_decrypt(private_key, encrypted_key):
+#     secret_key = private_key.decrypt(
+#         encrypted_key,
+#         asym_padding.OAEP(
+#             mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
+#             algorithm=hashes.SHA256(),
+#             label=None
+#         )
+#     )
+#     return secret_key
 
 # Diffie-Hellman Key Exchange Methods
 # Generate private/public key pair

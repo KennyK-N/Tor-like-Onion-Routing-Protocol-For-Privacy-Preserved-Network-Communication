@@ -9,6 +9,7 @@ import queue
 import crypto_utils
 from threading import Lock
 import pickle
+import packet as PacketFormat
 # Need two-way communication between the server and the client, cuz server is like website server, it's gotta send the website back to the client
 # We don't actually have to do the request stuff, we just gotta let the server have the ability to send stuff back
 HOST = "127.0.0.1"
@@ -26,7 +27,7 @@ class Server:
         self.receive_sockets={}
 
 
-    def relay_logic(self, client_sock, socket_name):
+    def server_logic(self, client_sock, socket_name):
         print(f"Incoming thread handling connection from prev node")
         retry_counter_data = 0
         NUM_ATTEMPTS_DATA = 10
@@ -61,12 +62,15 @@ class Server:
                 else:
                     continue
 
-                #TODO DO SOMETHING WITH DATA OVER HERE
+                #TODO Server logic HERE, 
+                # pretend to process the receive message, create a new onion packet with self.packet_type = RESPONSE, 
+                # with with some response message and then just send packt o client
+                
                 message = data[-1]
                 message["data"] = "RECEV WORKING"
                 print(data)
-                
-                client_sock.sendall(pickle.dumps(data))
+
+                client_sock.sendall(PacketFormat.to_bytes_rep(data))
 
         except Exception as e:
             print(f"Incoming error: {e}")
@@ -94,7 +98,7 @@ class Server:
                 self.receive_sockets[socket_name] = client_sock
 
                 t = threading.Thread(
-                    target=self.relay_logic,
+                    target=self.server_logic,
                     args=(client_sock,socket_name,), daemon=True
                 )
 

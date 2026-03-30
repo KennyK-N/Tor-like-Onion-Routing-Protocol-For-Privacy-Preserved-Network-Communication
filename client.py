@@ -88,8 +88,8 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
     try:
         custom_circuit = None
         while True:
-            # serveraddr = input("Enter Server Ip")
-            # port = input("Enter Server Port")
+            serveraddr = input("Enter Server Ip")
+            port = input("Enter Server Port")
 
             # PERFORM KEY EXCHANGE HERE ITTERATIVELY
             if CLIENT_DH_KEY == None:
@@ -104,12 +104,17 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
             # TODO: put msg in layered packet encrypted with symmetric keys before sending
             test = []
             #NOTE: ALways make sure that the server is the innerpacket in layered/nested packet, and make sure the first entry is the outerpacket
-            # test.append({"host": serveraddr, "port": int(port), "id": "server"})
+            test.append({"host": serveraddr, "port": int(port), "id": "server"})
             
             for i in range(len(circuit) - 1, -1, -1):
                 test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"], "id": circuit[i]})
             
+            # count becomes len if theres a server
             test.append({"type":"decrement", "count": len(circuit), "data": "works", "source": proxy_sock.getsockname()})
+            
+            #Count becomes len-1 if no server and only hops
+            #test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
+            
             """--------TEST CODE IN HERE """
             proxy_sock.sendall(pickle.dumps(test))
     except Exception as e:
