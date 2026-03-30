@@ -22,7 +22,9 @@ mutex = Lock()
 client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
 '''
 Do this instad save the df key in a file in the relay folder in the active fo;lder, overwrite the file if another key exchange happens and delete the file when the relay folder is deleted
-
+We can then eliminate the big while loop in the relay function, we can possibly have the client send a closing message that will tell the relay to delete that key (not needed see next line), 
+but whenever a client starts up even if they have the same port and address as a previous client, they will still need to perform a key exchange before they can talk with the 
+relay, because the client doesnt have the key but only the relay does, hence prior keys that were not cleaned up are obsolete anyways even if a previous address and port was reused by a client
 '''
 class Proxy:
     def __init__(self, host):
