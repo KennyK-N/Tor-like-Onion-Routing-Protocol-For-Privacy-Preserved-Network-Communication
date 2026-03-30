@@ -93,12 +93,12 @@ class Proxy:
                     break
                 if not data:
                     break
-                """ TEST CODE"""
+                """ ------------TEST CODE------------"""
                 data = pickle.loads(data)
                 message = data[-1]
                 message["count"] += 1
                 print(data)
-                """ TEST CODE"""
+                """ ------------TEST CODE------------"""
                 client_sock.sendall(pickle.dumps(data)) 
         except Exception as e:
             print(f"Forward listener error: {e}")
@@ -115,7 +115,7 @@ class Proxy:
         NUM_ATTEMPTS_DATA = 10
         NUM_ATTEMPTS_TIME_OUT = 2
         retry_counter_timeout = 0
-
+        forward_sock = None
         try:
             client_sock.settimeout(RECEIVE_TIMEOUT)
             while self.running:
@@ -142,7 +142,7 @@ class Proxy:
                 
                 retry_counter_data = 0
 
-                """ TEST CODE"""
+                """ ------------"TEST CODE------------"""
                 # DElete later ofr testing purpose    
                 if isinstance(data, bytes):
                     data = pickle.loads(data)
@@ -151,8 +151,7 @@ class Proxy:
 
                 # Echo back for testing (DELETE LATER)
                 print(f"\nData is {data}")
-                message = data[-1]
-                forward_sock = None 
+                message = data[-1] 
                 
                 if message["type"] == "decrement":
                     if message["count"] == 0:
@@ -175,7 +174,7 @@ class Proxy:
                             )
                             t.start()
                         forward_sock.sendall(pickle.dumps(data))
-                """ TEST CODE"""
+                """ ------------TEST CODE------------"""
 
                 '''
                 HERE WE DECRYPT AND BREAK DOWN THE PACKET AND PREPARE IT FOR SENDING
