@@ -14,11 +14,11 @@ AES_key_length = 32 # length in bytes 16 24 or 32
 iv_key_length = 16
 
 class RelayFlag(Enum):
-    ENTRY=1
-    EXIT=2
-    MIDDLE=3
+    # ENTRY=1
+    # EXIT=2
+    # MIDDLE=3
     NONE = 4 # Client or Server Node
-
+    RELAY = 5
 class Packet_Type(Enum):
     REQUEST=1
     RESPONSE=2

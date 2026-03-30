@@ -4,6 +4,7 @@ import socket
 import threading
 
 import crypto_utils
+import packet as PacketFormat
 from cryptography.hazmat.primitives import serialization
 
 ACTIVE_PROXIES_DIR = "active_proxies"
@@ -92,13 +93,41 @@ def send_input_to_proxy(proxy_sock):
         proxy_sock.close()
         print("Input thread shutting down.")
 
+# HAVENT TESTED IT YET so idk if this works properly
+def create_exchange_packet(proxies, client_addr, client_port, circuit):
+    packet = PacketFormat.Onion_Packet(None,
+                                       None,
+                                       len(proxies),
+                                       crypto_utils.Packet_Type.EXCHANGE_DH.value)
+    
+    for i in range(len(circuit) - 1, -1, -1):
+        proxy = proxies[circuit[i]]
+        inner = PacketFormat.Request_Packet(src_addr= client_addr, 
+                                            src_port= client_port, 
+                                            dest_addr= proxy["host"], 
+                                            dst_port= proxy["port"], 
+                                            payload = None,
+                                            relay_type= crypto_utils.RelayFlag.RELAY.value)
+        if i == 0:
+            packet.Request_Packet = PacketFormat.to_bytes_rep(inner)
+        else:
+            inner.payload = packet.Request_Packet
+            packet.Request_Packet = PacketFormat.to_bytes_rep(inner)
+    
+    return PacketFormat.to_bytes_rep(packet)
+
 def main():
     proxies = discover_proxies()
 
     print("Available proxies:", list(proxies.keys()))
     circuit = choose_circuit(proxies, 3)
     print("Chosen circuit:", circuit)
+
+    # print(proxies)
+
     # Connect to first proxy and start listener
+
+    #UNCOMMENT THIS FOR TESTING PURPOSE
     proxy_sock = connect_to_circuit(proxies, circuit)
 
     send_input_to_proxy(proxy_sock)
