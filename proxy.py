@@ -20,7 +20,10 @@ mutex = Lock()
 
 # Only remove the key from when the session is finish
 client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
+'''
+Do this instad save the df key in a file in the relay folder in the active fo;lder, overwrite the file if another key exchange happens and delete the file when the relay folder is deleted
 
+'''
 class Proxy:
     def __init__(self, host):
         self.host = host
