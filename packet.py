@@ -2,21 +2,21 @@ import json
 import pickle
 from crypto_utils import RelayFlag, Packet_Type, Packet_Type
 
-class Respond_Packet:
-    def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type):
-        self.relay_type = relay_type
-        self.src_addr = src_addr
-        self.src_port = src_port
-        '''
-        As the packet moves from the client towards the server during its request process, 
-        we will stamp each previous hop’s address and port into the response packet and encrypt it with the current relay’s symmetric key generated from diffile hellmen. 
-        If the previous hop is the client, we encrypt it with the first hop’s key. 
-        This will continues until the packet reaches the server. Doing so, will allow us to backtrack the connection while keeping the identity or addresses of the other relay
-        hidden from the server, the address is only revealed as we strip layer by layer through traversing the hops starting from the server to the client.
-        '''
-        self.dest_addr = dest_addr # NEED TO BE ENCRYPTED
-        self.dst_port = dst_port # NEED TO BE ENCRYPTED
-        self.payload = payload # THIS IS ENCRYPTED AS IT TRAVELS FROM THE SERVER TO THE CLIENT AND DECRYPTED AT THE CLIENT
+# class Respond_Packet:
+#     def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type):
+#         self.relay_type = relay_type
+#         self.src_addr = src_addr
+#         self.src_port = src_port
+#         '''
+#         As the packet moves from the client towards the server during its request process, 
+#         we will stamp each previous hop’s address and port into the response packet and encrypt it with the current relay’s symmetric key generated from diffile hellmen. 
+#         If the previous hop is the client, we encrypt it with the first hop’s key. 
+#         This will continues until the packet reaches the server. Doing so, will allow us to backtrack the connection while keeping the identity or addresses of the other relay
+#         hidden from the server, the address is only revealed as we strip layer by layer through traversing the hops starting from the server to the client.
+#         '''
+#         self.dest_addr = dest_addr # NEED TO BE ENCRYPTED
+#         self.dst_port = dst_port # NEED TO BE ENCRYPTED
+#         self.payload = payload # THIS IS ENCRYPTED AS IT TRAVELS FROM THE SERVER TO THE CLIENT AND DECRYPTED AT THE CLIENT
 
 class Data_packet:
     def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type, relay_id):

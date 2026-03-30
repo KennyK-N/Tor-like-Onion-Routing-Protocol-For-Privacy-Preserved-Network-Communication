@@ -146,7 +146,8 @@ class Proxy:
                 # DElete later ofr testing purpose    
                 if isinstance(data, bytes):
                     data = pickle.loads(data)
-                    
+                else:
+                    continue  
                 #print(f"Received {len(data)} bytes from prev node")
 
                 # Echo back for testing (DELETE LATER)
@@ -256,7 +257,9 @@ class Proxy:
 
     def start(self):
         try:
-            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port))
+            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port),
+            daemon=True # Maybe delete later
+                                           )
             self.thread.start()
 
             #TODO: possibly want a nother thread so we can interactable relay
@@ -276,7 +279,7 @@ def setup_signal_handlers(proxy):
         print("\nShutting down proxy...")
         proxy.unregister()
         proxy.running=False
-        proxy.thread.join()
+        # proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
         proxy.relay_socket.close()
         recv_socket_list = proxy.receive_sockets
         send_socket_list = proxy.send_sockets
@@ -297,7 +300,7 @@ def main():
     proxy.register()
     setup_signal_handlers(proxy)
     proxy.start()
-    proxy.thread.join()
+    # proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
     
     # clean up
     recv_socket_list = proxy.receive_sockets

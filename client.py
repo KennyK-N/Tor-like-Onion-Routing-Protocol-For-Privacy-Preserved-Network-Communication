@@ -86,18 +86,31 @@ def connect_to_circuit(proxies, circuit):
 # Takes input and puts it in a layered packet to send through the circuit
 def send_input_to_proxy(proxy_sock, circuit, proxies):
     try:
+        custom_circuit = None
         while True:
+            # serveraddr = input("Enter Server Ip")
+            # port = input("Enter Server Port")
+
+            # PERFORM KEY EXCHANGE HERE ITTERATIVELY
+            if CLIENT_DH_KEY == None:
+                pass
+
             # Send a test message to first proxy (Delete later)
             """ ------------TEST CODE IN HERE------------"""
             msg = input("Enter message: ")
             if msg.lower() in ("exit", "quit"):
                 break
+
             # TODO: put msg in layered packet encrypted with symmetric keys before sending
             test = []
+            #NOTE: ALways make sure that the server is the innerpacket in layered/nested packet, and make sure the first entry is the outerpacket
+            # test.append({"host": serveraddr, "port": int(port), "id": "server"})
+            
             for i in range(len(circuit) - 1, -1, -1):
                 test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"], "id": circuit[i]})
             
-            test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
+            test.append({"type":"decrement", "count": len(circuit), "data": "works", "source": proxy_sock.getsockname()})
+            """--------TEST CODE IN HERE """
             proxy_sock.sendall(pickle.dumps(test))
     except Exception as e:
         print(f"Input thread error: {e}")
@@ -105,7 +118,7 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
         proxy_sock.close()
         print("Input thread shutting down.")
 
-# HAVENT TESTED IT YET so idk if this works properly
+# HAVENT TESTED IT YET so idk if this works properly, should work tho cuz that for loop works
 def create_exchange_packet(proxies, client_addr, client_port, circuit):
     packet = PacketFormat.Onion_Packet(None,
                                        None,
