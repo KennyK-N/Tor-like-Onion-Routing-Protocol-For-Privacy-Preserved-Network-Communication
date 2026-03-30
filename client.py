@@ -129,7 +129,7 @@ def main():
     proxies = discover_proxies()
 
     print("Available proxies:", list(proxies.keys()))
-    circuit = choose_circuit(proxies, 3)
+    circuit = choose_circuit(proxies, len(proxies))
     print("Chosen circuit:", circuit)
 
     # print(proxies)

@@ -66,6 +66,7 @@ class Proxy:
 
     def relay_send(self, client_name, data):
         sock = self.send_sockets.get(client_name)
+        # Add a retry loop here
         if not sock:
             print(f"No socket found for {client_name}")
             return False
