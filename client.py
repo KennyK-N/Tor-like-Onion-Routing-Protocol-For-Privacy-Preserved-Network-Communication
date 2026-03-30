@@ -53,10 +53,38 @@ def listen_to_proxy(proxy_sock):
     """Thread function: listen for incoming packets from the proxy"""
     try:
         while True:
+            #TODO: MAYBE ADD TIME OUT JUST STEAL FROM PROXY CODE, IDK IM TOO TIRED IM TYPING THIS RN
             data = proxy_sock.recv(4096)
-            # TODO: Use symmetric keys to decrypt data here before printing
+
             if not data:
                 break
+
+            #TODO:
+            """
+            IF packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
+                
+                if CLIENT_DH_KEY == NONE: CREATE A DICTIONARY
+
+                ITTERATE OVER THE PAYLOAD UNTIL, THERE IS NO MORE PACKET (USE IF isinstance) 
+                AND YOU GET THE SALT
+                AND THE RELAY PUBLIC KEY
+
+                PEFORM DH KEY EXCHANGE
+
+                STORE THE KEY WITH THE CORRESPONDING RELAY
+
+                WAKE UP THE SENDER PROB DONT NEED MUTEX IF WE USE SYNCHRONIZATON AND MUTAL EXCLUSION 
+
+                AND EXIT THIS BRANCH
+
+            ELIF packet_type == crypto_utils.Packet_Type.RESPONSE.value:
+
+                DECRYPT PAYLOAD STARTING WITH THE ENTRY RELAY KEY TO OUTER RELAY KEY, VERIFY THIS
+                THEN PRINT IT
+            """
+
+
+
             print(f"Received {len(data)} bytes from proxy: {data[:50]}...")
             """ ------------TEST CODE------------"""
             print(pickle.loads(data)) 
@@ -91,9 +119,28 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
             serveraddr = input("Enter Server Ip")
             port = input("Enter Server Port")
 
-            # PERFORM KEY EXCHANGE HERE ITTERATIVELY
+            #TODO
+            #NOTE: LOGIC MAY NOT 100 PERCENT BE CORRECT MAKE SURE TO VERIFY
+            # PERFORM KEY EXCHANGE HERE Iteratively
             if CLIENT_DH_KEY == None:
-                pass
+                """
+                custom_lst
+                for i in range(len(circuit)):
+                    send the EXCHANGE packet to each hop invidually and wait for a response, 
+                    e.g  
+                    Itt1: Req: client -> hop1, send-thread goes into wait/sleep, Res :client <- hop1, receive threads recieves packet wakes up send thread
+                    Itt2: Req: client -> hop1 -> hop2, send-thread goes into wait/sleep, Res :client <- hop1 <- hop2, receive threads recieves packet wakes up send thread
+                    Itt3: Req: client -> hop1 -> hop2 -> hop3, send-thread goes into wait/sleep, Res :client <- hop1 <- hop2 <- hop3, receive threads recieves packet wakes up send thread 
+                    Itt4, etc. repeat similarly to above process
+                    use cond.wait() Thread goes into waiting mode till it receives a response, times out after certain time limit
+                    
+                    pseudo code for constructing the packet
+                    custom_lst.append(circuit[i])
+                    for i in range(len(custom_lst) - 1, -1, -1):
+                        construct the packet starting from inner to outer, NOTE: no idea if this is correct so verify this :)
+                    
+                    Then send and wait, i.e do the thing above
+                """
 
             # Send a test message to first proxy (Delete later)
             """ ------------TEST CODE IN HERE------------"""
@@ -114,8 +161,19 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
             
             #Count becomes len-1 if no server and only hops
             #test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
+            """--------TEST CODE IN HERE ------------"""
+
+            #TODO
+            #NOTE: LOGIC MAY NOT 100 PERCENT BE CORRECT MAKE SURE TO VERIFY
+            """
+            FIRST CREATE A PACKET THAT CONTAINS THE SERVER AND THE ORIGINAL MESSAGE
             
-            """--------TEST CODE IN HERE """
+            THEN IN THIS LOOP:
+            for i in range(len(circuit) - 1, -1, -1):
+                CREATE A NEW PACKET, STORE THE ORIGINAL PAYLOAD IN THE NEW PACKET, ENCRYPT THE PAYLOAD WITH THE CORRESPONDING KEY
+
+            AFTER YOU HAVE THE PACKET CONSTRUCT THE ONION PACKET SEND IT OVER
+            """ 
             proxy_sock.sendall(pickle.dumps(test))
     except Exception as e:
         print(f"Input thread error: {e}")
@@ -123,7 +181,7 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
         proxy_sock.close()
         print("Input thread shutting down.")
 
-# HAVENT TESTED IT YET so idk if this works properly, should work tho cuz that for loop works
+#NOTE: HAVENT TESTED IT YET so idk if this works properly, should work tho cuz that for loop works
 def create_exchange_packet(proxies, client_addr, client_port, circuit):
     packet = PacketFormat.Onion_Packet(None,
                                        None,
@@ -156,7 +214,6 @@ def main():
     # print(proxies)
 
     # Connect to first proxy and start listener
-
     #UNCOMMENT THIS FOR TESTING PURPOSE
     proxy_sock = connect_to_circuit(proxies, circuit)
 

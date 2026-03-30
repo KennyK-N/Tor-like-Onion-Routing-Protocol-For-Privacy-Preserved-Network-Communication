@@ -105,7 +105,7 @@ class Proxy:
 
                 #TODO:
                 """
-                if packet_type == crypto_utils.Packet_Type.REQUEST.value:
+                if packet_type == crypto_utils.Packet_Type.RESPONSE.value:
                     Further encrypt the payload with the current key then send
                     client_sock.sendall(PacketFormat.to_bytes_rep(data)) 
                 elif packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
@@ -160,6 +160,7 @@ class Proxy:
 
                 # Echo back for testing (DELETE LATER)
                 message = data[-1]
+                print(f"\nFULL Data is {data}")
                 print(f"\nData is {data[message['count']]}")
                 forward_sock = None 
 
