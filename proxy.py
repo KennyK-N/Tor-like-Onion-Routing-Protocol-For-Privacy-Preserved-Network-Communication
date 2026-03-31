@@ -6,23 +6,23 @@ import socket
 import threading
 import queue
 import crypto_utils
-from threading import Lock
+from threading import Lock # PROB WONT USE
 import pickle
 import packet as PacketFormat
 
 ACTIVE_PROXIES_DIR = "active_proxies"
 HOST = "127.0.0.1"
 # FOr demo purposes leave it like this for now other wise it will take forever to clean up
+#EXTEND THESE IF TIMEOUT TWO FAST
 RECEIVE_TIMEOUT = 5
 RELAY_TIMEOUT = 5
 IS_RELAY= crypto_utils.RelayFlag.RELAY.value
 
-mutex = Lock()
+#TODO
+# Will need to generate a salt for each client, ill let you decide on this
+client_sem_key={} #{client_sock.getpeername()/clientid, and the key from DH EXCHANGE}
+mutex = Lock() # NEED THIS BECAUSE OF RACE CONDITION, MULTIPLE THREADS CAN BE WRITING THE SHARED VARIABLE
 
-# Will need to generate a salt for each client
-
-# Only remove the key from when the session is finish
-client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
 '''
 Do this instad save the df key in a file in the relay folder in the active fo;lder, overwrite the file if another key exchange happens and delete the file when the relay folder is deleted
 We can then eliminate the big while loop in the relay function, we can possibly have the client send a closing message that will tell the relay to delete that key (not needed see next line), 
@@ -64,7 +64,7 @@ class Proxy:
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
             print(f"Removed proxy {self.proxy_id} from active_proxies")
-
+    # ONLY USE THIS IF WE USE DICTIONARY TO STORE THE FORWARD SOCKETS, prob wont need this tho tbh
     def relay_send(self, client_name, data):
         sock = self.send_sockets.get(client_name)
         if not sock:
