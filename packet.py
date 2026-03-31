@@ -24,8 +24,7 @@ class Packet_Type(Enum):
     EXCHANGE = 2 # For Diffie-Hellman exchange
 
 class Packet:
-    def __init__(self, packet_type, payload, dst_addr= None, dst_port = None):
-        self.packet_type = packet_type
+    def __init__(self, payload, dst_addr= None, dst_port = None):
         self.dst_addr = dst_addr
         self.dst_port = dst_port
         self.payload = payload # can either be the actual message or the another packet object, either way this will be encrypted by the client, and decrypted as it traverses
