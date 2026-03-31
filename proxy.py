@@ -16,29 +16,12 @@ HOST = "127.0.0.1"
 #EXTEND THESE IF TIMEOUT TWO FAST
 RECEIVE_TIMEOUT = 5
 RELAY_TIMEOUT = 5
-IS_RELAY= crypto_utils.RelayFlag.RELAY.value
 
-#TODO
-# Will need to generate a salt for each client, ill let you decide on this
-client_sem_key={} #{client_sock.getpeername()/clientid, and the key from DH EXCHANGE}
-mutex = Lock() # NEED THIS BECAUSE OF RACE CONDITION, MULTIPLE THREADS CAN BE WRITING THE SHARED VARIABLE
-
-'''
-Do this instad save the df key in a file in the relay folder in the active fo;lder, overwrite the file if another key exchange happens and delete the file when the relay folder is deleted
-We can then eliminate the big while loop in the relay function, we can possibly have the client send a closing message that will tell the relay to delete that key (not needed see next line), 
-but whenever a client starts up even if they have the same port and address as a previous client, they will still need to perform a key exchange before they can talk with the 
-relay, because the client doesnt have the key but only the relay does, hence prior keys that were not cleaned up are obsolete anyways even if a previous address and port was reused by a client
-'''
 class Proxy:
     def __init__(self, host):
         self.host = host
         self.proxy_id = str(uuid.uuid4())
         os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True) # make sure directory exists
-
-        # Make DH key pair
-        self.ecdh_private, self.ecdh_public = crypto_utils.generate_ecdh_keypair()
-        # Serialize public key to save in file
-        pub_key_pem_str = crypto_utils.serialize_public_key(self.ecdh_public).decode('utf-8')
 
         # Socket for incoming connections (from prev node)
         self.relay_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -47,7 +30,7 @@ class Proxy:
 
         # Info file for this proxy
         self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
-        self.entry = f"{self.proxy_id},{self.host},{self.port},{pub_key_pem_str}\n" 
+        self.entry = f"{self.proxy_id},{self.host},{self.port}\n" 
 
         self.running = True
         self.receive_sockets={} # For sockets where the relay is receiving
@@ -84,14 +67,14 @@ class Proxy:
                 return False
 
     # Handle Server-> Client Commmunication
-    def forward_listener(self, forward_sock, client_sock):
+    def forward_listener(self, forward_sock, client_sock, symm_key):
         try:
-            forward_sock.settimeout(RECEIVE_TIMEOUT)
+            # forward_sock.settimeout(RECEIVE_TIMEOUT)
             while self.running:
-                try:
-                    data = forward_sock.recv(4096)
-                except socket.timeout:
-                    break
+                # try:
+                data = forward_sock.recv(4096)
+                # except socket.timeout:
+                #     break
                 if not data:
                     break
 
@@ -126,19 +109,22 @@ class Proxy:
         NUM_ATTEMPTS_DATA = 10
         NUM_ATTEMPTS_TIME_OUT = 2
         retry_counter_timeout = 0
+        forward_sock = None 
+        symm_key = None # symmetric key from key exchange
         try:
-            client_sock.settimeout(RECEIVE_TIMEOUT)
+            # client_sock.settimeout(RECEIVE_TIMEOUT)
             while self.running:
                 # Time out mechanism to time out recv
-                try:
-                    data = client_sock.recv(4096)
-                except socket.timeout:
-                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
-                        print("Error: Connection timed out while waiting for data")
-                        break;
-                    else:
-                        retry_counter_timeout += 1
-                        continue
+                # try:
+                data = client_sock.recv(4096)
+                print(f"received {data}")
+                # except socket.timeout:
+                #     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                #         print("Error: Connection timed out while waiting for data")
+                #         break
+                #     else:
+                #         retry_counter_timeout += 1
+                #         continue
 
                 retry_counter_timeout=0
 
@@ -152,103 +138,89 @@ class Proxy:
                 
                 retry_counter_data = 0
 
-                """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""  
+                # load data using pickle if needed
                 if isinstance(data, bytes):
-                    data = pickle.loads(data)
+                    packet = pickle.loads(data)
                 else:
                     continue  
+                """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""  
 
                 # Echo back for testing (DELETE LATER)
-                message = data[-1]
-                print(f"\nFULL Data is {data}")
-                print(f"\nData is {data[message['count']]}")
-                forward_sock = None 
+                # message = data[-1]
+                # print(f"\nFULL Data is {data}")
+                # print(f"\nData is {data[message['count']]}")
+                # forward_sock = None 
 
-                if message["type"] == "decrement":
-                    if message["count"] == 0:
-                        message["type"] = "increment"
-                        message["data"] = "response from exit"
-                        print(data)
-                        client_sock.sendall(pickle.dumps(data))
-                    else:
-                        message["count"] = message["count"] - 1
-                        # Code logic to adapt for final implementation
-                        if forward_sock is None:
-                            # Creates a new socket maybe use a dictionary to avoid creating sockets
-                            forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                            forward_sock.connect((data[message["count"]]["host"], data[message["count"]]["port"]))
-                            # start listener thread so we can receive the response back
-                            t = threading.Thread(
-                                target=self.forward_listener,
-                                args=(forward_sock, client_sock),
-                                daemon=True
-                            )
-                            t.start()
-                        forward_sock.sendall(pickle.dumps(data))
+                # if message["type"] == "decrement":
+                #     if message["count"] == 0:
+                #         message["type"] = "increment"
+                #         message["data"] = "response from exit"
+                #         print(data)
+                #         client_sock.sendall(pickle.dumps(data))
+                #     else:
+                #         message["count"] = message["count"] - 1
+                #         # Code logic to adapt for final implementation
+                #         if forward_sock is None:
+                #             # Creates a new socket maybe use a dictionary to avoid creating sockets
+                #             forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                #             forward_sock.connect((data[message["count"]]["host"], data[message["count"]]["port"]))
+                #             # start listener thread so we can receive the response back
+                #             t = threading.Thread(
+                #                 target=self.forward_listener,
+                #                 args=(forward_sock, client_sock),
+                #                 daemon=True
+                #             )
+                #             t.start()
+                #         forward_sock.sendall(pickle.dumps(data))
                 """ TEST CODE --CAN COMMENT OUT THIS PART OUT, THIS IS FOR REFERENCE"""
 
-                # TODO: decrypt layer before checking packet type and forwarding
-                # Check the packet type and handle accordingly
-                packet_type = None # TODO: get packet type from Onion Packet OBJ
+               
+
+                # Decrypt payload, if there's an internal packet, set it here
+                payload = packet.payload
                 
-                if packet_type == crypto_utils.Packet_Type.REQUEST.value:
-                    # TODO: decrypt the payload, and construct the proper packet to send, while extracting the dest addr and port of the payload we decrypted
-                    packet = None
 
-                    forward_sock = None 
-
+                if isinstance(payload, PacketFormat.Packet): # If there's an internal packet, it means this is not for a key exchange
+                    # Start a listener thread for the forward if we are forwarding for the first time, 
+                    # otherwise we can just use the same forward socket since the listener thread would already be running
                     if forward_sock is None:
                         forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        #TODO:
-                        # connect to the next relay's destination addr and port 
-                        #forward_sock.connect()
+                        forward_sock.connect((payload.dst_addr, payload.dst_port))
                         
                         # start listener thread so we can receive the response back
                         t = threading.Thread(
                             target=self.forward_listener,
-                            args=(forward_sock, client_sock),
+                            # Note that symm_key will not be None, since first packet will be unlayered, for key exchange, so won't enter this if statement
+                            args=(forward_sock, client_sock, symm_key),
                             daemon=True
                         )
                         t.start()
-
-                        forward_sock.sendall(PacketFormat.to_bytes_rep(packet))
-
-                elif packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
-                    # Handle Diffie-Hellman exchange packet
-                    # Since proxy public key is saved in file, actually don't need to send it back, 
-                    # just need to send back the salt to use in crypto_derive_shared_key() 
-                    # Although we could also send public key back with salt instead of saving it in file, it's ur choice
+                    # Forward the internal packet to the next relay/server
+                    forward_sock.sendall(PacketFormat.to_bytes_rep(packet))
+                
+                else: # If the payload isn't a packet, it means this is for a key exchange
+                    # Generate key pair and salt for this exchange
+                    private, public = crypto_utils.generate_ecdh_keypair()
+                    salt = os.urandom(16) # Generate random salt
                     
-
-                    # TODO:
-                    if(1): # Delete Later
-                    #if Onion_Packet object.num_layer == 0 or can just check if Onion_Packet.Data_packet.relay_id == self.relay_id
-                        client_sock.sendall(PacketFormat.to_bytes_rep(data))
-        
-                    else:
-                        #decrement onion packet counter
-                        forward_sock = None 
-                        #perform this logic which is similar to above:
-                        if forward_sock is None:
-                            forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                            #TODO:
-                            # connect to the next relay's destination addr and port 
-                            #forward_sock.connect()
-                            
-                            # start listener thread so we can receive the response back
-                            t = threading.Thread(
-                                target=self.forward_listener,
-                                args=(forward_sock, client_sock),
-                                daemon=True
-                            )
-                            t.start()
-
-                            forward_sock.sendall(PacketFormat.to_bytes_rep(packet))
-                    
-                    pass
+                    # Get symmetric key using the client's public key and the relay's private key
+                    symm_key = crypto_utils.derive_shared_key(private, crypto_utils.load_public_key(data), salt)
+                    packet = PacketFormat.Packet(
+                        packet_type=PacketFormat.Packet_Type.EXCHANGE.value,
+                        payload = {
+                            "public_key": crypto_utils.serialize_public_key(public),
+                            "salt": salt
+                        }
+                    )
+                       
+                    # Send back public key and salt so client can derive symmetric key
+                    print("Sending key exchange")
+                    client_sock.sendall(PacketFormat.to_bytes_rep(packet))
 
         except Exception as e:
-            print(f"Incoming error: {e}")
+            exc_type, exc_obj, tb = sys.exc_info()
+
+            print(f"Incoming thread error: {e} at line {tb.tb_lineno}")
 
         finally:
             print(f"Closed connection for {socket_name}")
@@ -263,7 +235,7 @@ class Proxy:
     def start_relay(self, server_sock, host, port):
         print(f"Proxy {self.proxy_id} listening on {host}:{port}")
         server_sock.listen()
-        server_sock.settimeout(RELAY_TIMEOUT)
+        # server_sock.settimeout(RELAY_TIMEOUT)
 
         while self.running:
             try:
@@ -278,8 +250,8 @@ class Proxy:
                 )
 
                 t.start()
-            except socket.timeout:
-                pass
+            # except socket.timeout:
+            #     pass
             except Exception as e:
                 print("Error: ", e)
                 continue

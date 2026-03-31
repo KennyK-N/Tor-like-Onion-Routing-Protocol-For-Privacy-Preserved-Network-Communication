@@ -1,4 +1,3 @@
-from enum import Enum
 from cryptography.hazmat.primitives import padding as sym_padding
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
 from cryptography.hazmat.primitives import serialization, hashes
@@ -13,17 +12,7 @@ import os
 AES_key_length = 32 # length in bytes 16 24 or 32
 iv_key_length = 16
 
-class RelayFlag(Enum):
-    # ENTRY=1
-    # EXIT=2
-    # MIDDLE=3
-    NONE = 4 # Client or Server Node
-    RELAY = 5
-class Packet_Type(Enum):
-    REQUEST=1
-    RESPONSE=2
-    EXCHANGE_DH = 3 # For Diffie-Hellman exchange
-    # DATA = 4
+
 
 # RSA Key Exchange Methods
 # def one_way_key_exchange_encrypt(pub_key):

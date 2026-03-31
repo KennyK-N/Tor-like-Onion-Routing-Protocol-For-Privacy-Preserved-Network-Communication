@@ -42,7 +42,7 @@ class Server:
                 except socket.timeout:
                     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
                         print("Error: Connection timed out while waiting for data")
-                        break;
+                        break
                     else:
                         retry_counter_timeout += 1
                         continue

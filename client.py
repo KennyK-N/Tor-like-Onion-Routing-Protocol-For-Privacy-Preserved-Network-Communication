@@ -2,15 +2,17 @@ import random
 import os
 import socket
 import threading
-
+import sys
 import crypto_utils
 import packet as PacketFormat
 from cryptography.hazmat.primitives import serialization
 import queue
 import pickle 
+
 ACTIVE_PROXIES_DIR = "active_proxies"
-CLIENT_DH_KEY = None # This is dictionary, {relay id: Se key}
 MIN_PROXY = 3
+dh_key_info = [] # This is an array of dictionaries, {relay #: {}}
+exchange_cond = threading.Condition() # condition to synchronize key exchange process
 """
 Only do DH exchange if key None 
 """
@@ -22,6 +24,7 @@ def discover_proxies():
         return proxies
 
     # Iterate over each proxy file in the folder
+    i = 0
     for file in os.listdir(ACTIVE_PROXIES_DIR):
         if file.endswith(".txt"):
             file_path = os.path.join(ACTIVE_PROXIES_DIR, file)
@@ -29,14 +32,16 @@ def discover_proxies():
                 line = f.readline().strip()
                 # Each line format: proxy_id,host,port
                 parts = line.split(",")
-                if len(parts) >= 4:
-                    proxy_id, host, port, public_key = parts[0], parts[1], int(parts[2]), parts[3]
+                if len(parts) >= 3:
+                    proxy_id, host, port = parts[0], parts[1], int(parts[2])
                     proxies[proxy_id] = {
                         "host": host,
                         "port": port,
-                        "public_key": public_key,
+                        # "verification_key": verification_key, Can be used for verification later if wanted
                         "symmetric_key": None # This will be filled after key exchange
                     }
+                    
+        i += 1
 
     return proxies
 
@@ -49,16 +54,54 @@ def choose_circuit(proxies, k=3):
 
     return random.sample(proxy_ids, k)
 
+# Connects to the first proxy in the circuit and starts a listener thread
+def connect_to_circuit(proxies, circuit):
+    first_proxy_id = circuit[0]
+    proxy_info = proxies[first_proxy_id]
+    host = proxy_info["host"]
+    port = proxy_info["port"]
+
+    proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    proxy_sock.connect((host, port))
+    print(f"Connected to first proxy {first_proxy_id} at {host}:{port}")
+
+    # Start listener thread
+    listener_thread = threading.Thread(target=listen_to_proxy, args=(proxy_sock,), daemon=True)
+    listener_thread.start()
+
+    return proxy_sock
 
 def listen_to_proxy(proxy_sock):
     """Thread function: listen for incoming packets from the proxy"""
     try:
         while True:
-            #TODO: MAYBE ADD TIME OUT JUST STEAL FROM PROXY CODE, IDK IM TOO TIRED IM TYPING THIS RN
+            #TODO: maybe add time out a
             data = proxy_sock.recv(4096)
 
             if not data:
                 break
+            
+            if isinstance(data, bytes):
+                packet = pickle.loads(data)
+            else:
+                continue 
+
+
+            # TODO: make this work for multiple relays
+            if packet.packet_type == PacketFormat.Packet_Type.EXCHANGE.value:
+                
+                if not isinstance(packet.payload, PacketFormat.Packet):
+                    # Get public key and salt from the packet payload
+                    public_key_bytes = packet.payload["public_key"]
+                    salt = packet.payload["salt"]
+
+                # Get symmetric key using the client's private key and the relay's public key
+                with exchange_cond:
+                    symm_key = crypto_utils.derive_shared_key(dh_key_info[0]["private_key"], crypto_utils.load_public_key(public_key_bytes), salt)
+                    dh_key_info[0]["symm_key"] = symm_key
+                    exchange_cond.notify()
+
+                print("Key exchange successful, derived symmetric key for relay 1")
 
             #TODO:
             """
@@ -95,42 +138,37 @@ def listen_to_proxy(proxy_sock):
         proxy_sock.close()
         print("Connection closed.")
 
-# Connects to the first proxy in the circuit and starts a listener thread
-def connect_to_circuit(proxies, circuit):
-    first_proxy_id = circuit[0]
-    proxy_info = proxies[first_proxy_id]
-    host = proxy_info["host"]
-    port = proxy_info["port"]
-
-    proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    proxy_sock.connect((host, port))
-    print(f"Connected to first proxy {first_proxy_id} at {host}:{port}")
-
-    # Start listener thread
-    listener_thread = threading.Thread(target=listen_to_proxy, args=(proxy_sock,), daemon=True)
-    listener_thread.start()
-
-    return proxy_sock
 
 # Takes input and puts it in a layered packet to send through the circuit
 def send_input_to_proxy(proxy_sock, circuit, proxies):
     try:
-        custom_circuit = None
         while True:
             serveraddr = input("Enter Server Ip")
             port = input("Enter Server Port")
 
             #TODO
-            #NOTE: LOGIC MAY NOT 100 PERCENT BE CORRECT MAKE SURE TO VERIFY
-            # PERFORM KEY EXCHANGE HERE Iteratively
-            if CLIENT_DH_KEY == None:
-                for i in range(len(circuit)):
-                    # Send a DH_exchange packet to relay i
-                        # If i != 0, encrypt the internal packet(s) with the corresponding key from each previous relay
-                    # cond.wait() # wait for response, 
-                    # When response is received, cond.notify() is called in the listener thread to wake this up for it to send the next packet
-                    proxy_sock.sendall(create_exchange_packet(proxies, proxy_sock.getsockname()[0], proxy_sock.getsockname()[1], circuit))
-                    pass
+            # perform key exchange
+            with exchange_cond: 
+                if len(dh_key_info) == 0:
+                    for i in range(len(circuit)):
+                        private_key, public_key = crypto_utils.generate_ecdh_keypair()
+                        dh_key_info.append({"private_key": private_key, "public_key": public_key, "symm_key": None}) # symm_key will be filled after key exchange response is received
+
+                        # Send a exchange packet to relay i with the public key
+                        proxy_sock.sendall(
+                            create_packet(
+                                proxies,
+                                circuit,
+                                payload=crypto_utils.serialize_public_key(public_key),
+                                packet_type=PacketFormat.Packet_Type.EXCHANGE,
+                                dst_num=i+1
+                            )
+                        )
+                        exchange_cond.wait_for(lambda: dh_key_info[i]["symm_key"] is not None)
+                        # TODO
+                        # cond.wait() # wait for a key exchange response
+                        # When response is received, cond.notify() is called in the listener thread to wake this up for it to send the next packet
+                    
                 """
                 custom_lst
                 for i in range(len(circuit)):
@@ -184,12 +222,14 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
             """ 
             # proxy_sock.sendall(pickle.dumps(test))
     except Exception as e:
-        print(f"Input thread error: {e}")
+        exc_type, exc_obj, tb = sys.exc_info()
+
+        print(f"Input thread error: {e} at line {tb.tb_lineno}")
     finally:
         proxy_sock.close()
         print("Input thread shutting down.")
 
-def create_packet(proxies, circuit, payload, server_addr = None, server_port = None,  dst_num = None):
+def create_packet(proxies, circuit, payload, packet_type = PacketFormat.Packet_Type.DATA, server_addr = None, server_port = None,  dst_num = None):
     #dst_num is the number of hops, using it allows us to send messages to relays for key exchanges
     # If dst_num is None, message is sent to the server
     if dst_num == None:
@@ -198,17 +238,24 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
     # innermost packet has actual payload, others have the inner packet as payload
     cur_payload = payload
     for i in range(dst_num - 1, -1, -1):
-        if dst_num == len(circuit) + 1 and i == dst_num - 1: # If sending to server, innermost packet has server address and port
+        if i == len(circuit): # If sending to server, innermost packet has server address and port
             packet = PacketFormat.Packet(
+                                        packet_type=packet_type,
+                                        payload = cur_payload,
                                         dst_addr= server_addr, 
-                                        dst_port= server_port, 
-                                        payload = cur_payload)
+                                        dst_port= server_port,
+                                        )
         else: # Otherwise, dst is the next relay in the circuit
             cur_proxy = proxies[circuit[i]]
             packet = PacketFormat.Packet(
+                                        packet_type=packet_type,
+                                        payload = cur_payload,
                                         dst_addr= cur_proxy["host"], 
-                                        dst_port= cur_proxy["port"], 
-                                        payload = cur_payload)
+                                        dst_port= cur_proxy["port"] 
+                                        )
+        # TODO: Encrypt the packet with the corresponding symmetric key if its not the innermost packet (i.e. the server packet)
+
+
         # Update cur_payload for next packet
         cur_payload = PacketFormat.to_bytes_rep(packet)        
 

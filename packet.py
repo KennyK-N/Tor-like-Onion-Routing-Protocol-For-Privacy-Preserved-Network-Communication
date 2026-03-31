@@ -1,6 +1,6 @@
 import json
+from enum import Enum
 import pickle
-from crypto_utils import RelayFlag, Packet_Type, Packet_Type
 
 # class Respond_Packet:
 #     def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type):
@@ -18,8 +18,14 @@ from crypto_utils import RelayFlag, Packet_Type, Packet_Type
 #         self.dst_port = dst_port # NEED TO BE ENCRYPTED
 #         self.payload = payload # THIS IS ENCRYPTED AS IT TRAVELS FROM THE SERVER TO THE CLIENT AND DECRYPTED AT THE CLIENT
 
+
+class Packet_Type(Enum):
+    DATA=1
+    EXCHANGE = 2 # For Diffie-Hellman exchange
+
 class Packet:
-    def __init__(self, packet_type, src_addr, src_port, dst_addr, dst_port, payload):
+    def __init__(self, packet_type, payload, dst_addr= None, dst_port = None):
+        self.packet_type = packet_type
         self.dst_addr = dst_addr
         self.dst_port = dst_port
         self.payload = payload # can either be the actual message or the another packet object, either way this will be encrypted by the client, and decrypted as it traverses
