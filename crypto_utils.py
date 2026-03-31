@@ -90,4 +90,4 @@ def aes_decrypt(cipher, cipher_text):
     decrypted_message_with_padding = decryptor.update(cipher_text) + decryptor.finalize()
     unpadder = sym_padding.PKCS7(128).unpadder()
     decrypted_msg = unpadder.update(decrypted_message_with_padding) + unpadder.finalize()
-    return decrypted_msg.decode()
+    return decrypted_msg

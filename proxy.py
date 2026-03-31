@@ -78,13 +78,20 @@ class Proxy:
                 if not data:
                     break
                 
-                #TODO: encrypt data with symm_key here before putting in payload
 
-                packet = PacketFormat.Packet(payload=data)
+                #TODO: encrypt data with symm_key before putting in payload
+                cipher = crypto_utils.create_cipher(symm_key, temp_iv) # TODO: replace temp_iv use
+                encrypted_data = crypto_utils.aes_encrypt(cipher, data)
+
+
+                packet = PacketFormat.Packet(payload=encrypted_data)
                 client_sock.sendall(PacketFormat.to_bytes_rep(packet))
+                print("Forwarded response back")
 
         except Exception as e:
-            print(f"Forward listener error: {e}")
+            _, _, tb = sys.exc_info()
+
+            print(f"Forward Listener error: {e} at line {tb.tb_lineno}")
         finally:
             try:
                 forward_sock.close()
@@ -106,7 +113,7 @@ class Proxy:
                 # Time out mechanism to time out recv
                 # try:
                 data = client_sock.recv(4096)
-                print(f"received {data}")
+                print(f"received data from prev node")
                 # except socket.timeout:
                 #     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
                 #         print("Error: Connection timed out while waiting for data")

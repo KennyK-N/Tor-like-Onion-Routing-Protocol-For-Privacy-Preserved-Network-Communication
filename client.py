@@ -12,6 +12,7 @@ ACTIVE_PROXIES_DIR = "active_proxies"
 MIN_PROXY = 3
 dh_key_info = [] # This is an array of dictionaries, {relay #: {}}
 exchange_cond = threading.Condition() # condition to synchronize key exchange process
+temp_iv = b'\x00' * 16 # Temporary IV for testing, replace with random IV for actual encryption/decryption
 """
 Only do DH exchange if key None 
 """
@@ -73,8 +74,7 @@ def connect_to_circuit(proxies, circuit):
 def listen_to_proxy(proxy_sock, circuit):
     """Thread function: listen for incoming packets from the proxy"""
     try:
-        is_first_packet = True
-        key_exchange_done = False
+        key_exchange_num = 0
         while True:
             #TODO: maybe add time out a
             data = proxy_sock.recv(4096)
@@ -82,42 +82,35 @@ def listen_to_proxy(proxy_sock, circuit):
             if not data:
                 break
                 
-            # TODO: If this is not the first packet, need to decrypt before converting to an object
-            if not is_first_packet:
-                # TODO: Decrypt here
-                pass
 
             if isinstance(data, bytes):
                 packet = PacketFormat.to_obj_rep(data)
-                print(f"{isinstance(packet, PacketFormat.Packet)}")
             else:
                 continue 
 
-            if not key_exchange_done:
-                is_first_packet = False
-                i = 0
-                while isinstance(packet.payload, bytes):
+            if key_exchange_num < len(circuit): # If this is a key exchange packet, perform key exchange and store the symmetric key
+                relay_num = 0
+                for i in range(key_exchange_num):
                     packet = packet.payload
-                    # TODO: decrypt here
-                    decrypted_payload = packet # replace this with the decrypted payload after decryption
-
+                    # TODO: replace temp_iv use 
+                    cipher = crypto_utils.create_cipher(dh_key_info[i]["symm_key"], temp_iv)
+                    decrypted_payload = crypto_utils.aes_decrypt(cipher, packet)
                     if isinstance(decrypted_payload, bytes):
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
-                    i += 1
+                    relay_num = i+1
 
                 # Get public key and salt from the packet payload
                 public_key = crypto_utils.load_public_key(packet.payload["public_key"])
                 salt = packet.payload["salt"]
                 # Get symmetric key using the client's private key and the relay's public key
                 with exchange_cond:
-                    symm_key = crypto_utils.derive_shared_key(dh_key_info[0]["private_key"], public_key, salt)
-                    dh_key_info[i]["symm_key"] = symm_key
+                    symm_key = crypto_utils.derive_shared_key(dh_key_info[relay_num]["private_key"], public_key, salt)
+                    dh_key_info[relay_num]["symm_key"] = symm_key
                     exchange_cond.notify()
-                print(f"Derived symmetric key for relay {i+1}")
-
-            else:
+                print(f"Derived symmetric key for relay {relay_num+1}")
+                key_exchange_num += 1
+            else: # If this is a response packet, decrypt the packet layer by layer and print the response
                 for i in range(len(circuit)):
-                    # Decrypt the packet layer by layer using the corresponding symmetric key starting from the outermost layer
                     payload = packet.payload
                     # TODO: decrypt here using the corresponding symmetric key for relay i
                     decrypted_payload = payload # replace this with the decrypted payload after decryption
@@ -126,14 +119,6 @@ def listen_to_proxy(proxy_sock, circuit):
                         print(f"Received response from server: {decrypted_payload}")
                     else: # Get next packet layer
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
-                    
-                while isinstance(packet.payload, PacketFormat.Packet):
-                    packet = packet.payload
-                    # TODO: decrypt here
-                    if isinstance(packet.payload, bytes):
-                        packet = pickle.loads(packet.payload)
-                    i += 1
-                print(f"Received response from server: {packet.payload}")
 
             #TODO:
             """
@@ -197,11 +182,9 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                                 dst_num=i+1
                             )
                         )
+                        # Wait for response before sending next key exchange packet
                         exchange_cond.wait_for(lambda: dh_key_info[i]["symm_key"] is not None)
                         print(f"Symmetric key for relay {i+1} established.")
-                        # TODO
-                        # cond.wait() # wait for a key exchange response
-                        # When response is received, cond.notify() is called in the listener thread to wake this up for it to send the next packet
                     
                 """
                 custom_lst
