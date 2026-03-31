@@ -108,21 +108,17 @@ def listen_to_proxy(proxy_sock, circuit):
                 key_exchange_num += 1
             else: # If this is a response packet, decrypt the packet layer by layer and print the response
                 for i in range(len(circuit)):
-                    payload = packet.payload
                     # TODO: decrypt here using the corresponding symmetric key for relay i
-                    decrypted_payload = payload # replace this with the decrypted payload after decryption
+                    cipher = crypto_utils.create_cipher(dh_key_info[i]["symm_key"], packet.iv)
+                    decrypted_payload = crypto_utils.aes_decrypt(cipher, packet.payload)
 
                     if i == len(circuit) - 1: # If this is the last layer, print the response
-                        print(f"Received response from server: {decrypted_payload}")
+                        packet = PacketFormat.to_obj_rep(decrypted_payload)
+                        print(f"Received response from server: {packet.payload}")
                     else: # Get next packet layer
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
 
-            
-
-
-            print(f"Received {len(data)} bytes from proxy: {data[:50]}...")
-            """ ------------TEST CODE------------"""
-            print(PacketFormat.to_obj_rep(data)) 
+        
     except Exception as e:
         _, _, tb = sys.exc_info()
 
@@ -157,7 +153,6 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                     exchange_cond.wait_for(lambda: dh_key_info[i]["symm_key"] is not None)
                     print(f"Symmetric key for relay {i+1} established.")
 
-            # TODO: After key exchange is done, allow for other messages
             while True:
                 message = input("Enter message to send to server (or 'exit' to quit): ")
                 if message.lower() == "exit":

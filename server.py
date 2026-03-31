@@ -37,15 +37,15 @@ class Server:
             client_sock.settimeout(RECEIVE_TIMEOUT)
             while self.running:
                 # Time out mechanism to time out recv
-                try:
-                    data = client_sock.recv(4096)
-                except socket.timeout:
-                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
-                        print("Error: Connection timed out while waiting for data")
-                        break
-                    else:
-                        retry_counter_timeout += 1
-                        continue
+                # try:
+                data = client_sock.recv(4096)
+                # except socket.timeout:
+                #     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                #         print("Error: Connection timed out while waiting for data")
+                #         break
+                #     else:
+                #         retry_counter_timeout += 1
+                #         continue
 
                 retry_counter_timeout=0
 
@@ -62,15 +62,9 @@ class Server:
                 else:
                     continue
 
-                #TODO Server logic HERE, 
-                # pretend to process the receive message, create a new onion packet with self.packet_type = RESPONSE, 
-                # with with some response message and then just send packt o client
-                
-                message = data[-1]
-                message["data"] = "RECEV WORKING"
-                print(data)
-
-                client_sock.sendall(PacketFormat.to_bytes_rep(data))
+                print("Got a packet, sending message back to client")
+                packet = PacketFormat.Packet(payload="This is from server")
+                client_sock.sendall(PacketFormat.to_bytes_rep(packet))
 
         except Exception as e:
             print(f"Incoming error: {e}")
@@ -88,7 +82,7 @@ class Server:
     def start_relay(self, server_sock, host, port):
         print(f"Server {self.server_id} listening on {host}:{port}")
         server_sock.listen()
-        server_sock.settimeout(SERVER_TIMEOUT)
+        # server_sock.settimeout(SERVER_TIMEOUT)
 
         while self.running:
             try:
@@ -103,8 +97,8 @@ class Server:
                 )
 
                 t.start()
-            except socket.timeout:
-                pass
+            # except socket.timeout:
+            #     pass
             except Exception as e:
                 print("Error: ", e)
                 continue
