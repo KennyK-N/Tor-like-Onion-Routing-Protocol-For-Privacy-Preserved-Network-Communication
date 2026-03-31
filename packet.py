@@ -18,15 +18,11 @@ from crypto_utils import RelayFlag, Packet_Type, Packet_Type
 #         self.dst_port = dst_port # NEED TO BE ENCRYPTED
 #         self.payload = payload # THIS IS ENCRYPTED AS IT TRAVELS FROM THE SERVER TO THE CLIENT AND DECRYPTED AT THE CLIENT
 
-class Data_packet:
-    def __init__(self, src_addr, src_port, dest_addr, dst_port, payload, relay_type, relay_id):
-        self.relay_type = relay_type
-        self.src_addr = src_addr
-        self.src_port = src_port
-        self.dest_addr = dest_addr
+class Packet:
+    def __init__(self, packet_type, src_addr, src_port, dst_addr, dst_port, payload):
+        self.dst_addr = dst_addr
         self.dst_port = dst_port
         self.payload = payload # can either be the actual message or the another packet object, either way this will be encrypted by the client, and decrypted as it traverses
-        self.relay_id = relay_id
 
 class Onion_Packet:
     def __init__(self, Data_packet, num_layer, packet_type, Respond_packet=None):
@@ -42,32 +38,20 @@ def to_obj_rep(packet):
     return pickle.loads(packet)
     
 def test():
-    inner = Data_packet(
-        src_addr="relay2",
-        src_port=5001,
-        dest_addr="server",
+    inner = Packet(
+        dst_addr="server",
         dst_port=8080,
-        payload= "test message",
-        relay_type= RelayFlag.RELAY.name,
-        relay_id=None
+        payload= "test message"
     )
-    middle = Data_packet(
-        src_addr="relay1",
-        src_port=4000,
-        dest_addr="relay2",
+    middle = Packet(
+        dst_addr="relay2",
         dst_port=5000,
         payload=to_bytes_rep(inner),
-        relay_type=RelayFlag.RELAY.name,
-        relay_id=None
     )
-    outer = Data_packet (
-        src_addr="client",
-        src_port=4000,
-        dest_addr="relay1",
+    outer = Packet(
+        dst_addr="relay1",
         dst_port=5000,
         payload=to_bytes_rep(middle),
-        relay_type= RelayFlag.NONE.name,
-        relay_id=None
     )
 
     outer = to_bytes_rep(outer)

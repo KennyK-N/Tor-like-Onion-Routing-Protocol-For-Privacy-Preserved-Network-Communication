@@ -34,7 +34,8 @@ def discover_proxies():
                     proxies[proxy_id] = {
                         "host": host,
                         "port": port,
-                        "public_key": public_key
+                        "public_key": public_key,
+                        "symmetric_key": None # This will be filled after key exchange
                     }
 
     return proxies
@@ -123,6 +124,13 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
             #NOTE: LOGIC MAY NOT 100 PERCENT BE CORRECT MAKE SURE TO VERIFY
             # PERFORM KEY EXCHANGE HERE Iteratively
             if CLIENT_DH_KEY == None:
+                for i in range(len(circuit)):
+                    # Send a DH_exchange packet to relay i
+                        # If i != 0, encrypt the internal packet(s) with the corresponding key from each previous relay
+                    # cond.wait() # wait for response, 
+                    # When response is received, cond.notify() is called in the listener thread to wake this up for it to send the next packet
+                    proxy_sock.sendall(create_exchange_packet(proxies, proxy_sock.getsockname()[0], proxy_sock.getsockname()[1], circuit))
+                    pass
                 """
                 custom_lst
                 for i in range(len(circuit)):
@@ -144,23 +152,23 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
 
             # Send a test message to first proxy (Delete later)
             """ ------------TEST CODE IN HERE------------"""
-            msg = input("Enter message: ")
-            if msg.lower() in ("exit", "quit"):
-                break
+            # msg = input("Enter message: ")
+            # if msg.lower() in ("exit", "quit"):
+            #     break
 
-            # TODO: put msg in layered packet encrypted with symmetric keys before sending
-            test = []
-            #NOTE: ALways make sure that the server is the innerpacket in layered/nested packet, and make sure the first entry is the outerpacket
-            test.append({"host": serveraddr, "port": int(port), "id": "server"})
+            # # TODO: put msg in layered packet encrypted with symmetric keys before sending
+            # test = []
+            # #NOTE: ALways make sure that the server is the innerpacket in layered/nested packet, and make sure the first entry is the outerpacket
+            # test.append({"host": serveraddr, "port": int(port), "id": "server"})
             
-            for i in range(len(circuit) - 1, -1, -1):
-                test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"], "id": circuit[i]})
+            # for i in range(len(circuit) - 1, -1, -1):
+            #     test.append({"host": proxies[circuit[i]]["host"], "port": proxies[circuit[i]]["port"], "id": circuit[i]})
             
-            # count becomes len if theres a server
-            test.append({"type":"decrement", "count": len(circuit), "data": "works", "source": proxy_sock.getsockname()})
+            # # count becomes len if theres a server
+            # test.append({"type":"decrement", "count": len(circuit), "data": "works", "source": proxy_sock.getsockname()})
             
-            #Count becomes len-1 if no server and only hops
-            #test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
+            # #Count becomes len-1 if no server and only hops
+            # #test.append({"type":"decrement", "count": len(circuit)-1, "data": "works", "source": proxy_sock.getsockname()})
             """--------TEST CODE IN HERE ------------"""
 
             #TODO
@@ -174,34 +182,36 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
 
             AFTER YOU HAVE THE PACKET CONSTRUCT THE ONION PACKET SEND IT OVER
             """ 
-            proxy_sock.sendall(pickle.dumps(test))
+            # proxy_sock.sendall(pickle.dumps(test))
     except Exception as e:
         print(f"Input thread error: {e}")
     finally:
         proxy_sock.close()
         print("Input thread shutting down.")
 
-#NOTE: HAVENT TESTED IT YET so idk if this works properly, should work tho cuz that for loop works
-def create_exchange_packet(proxies, client_addr, client_port, circuit):
-    packet = PacketFormat.Onion_Packet(None,
-                                       None,
-                                       len(proxies),
-                                       crypto_utils.Packet_Type.EXCHANGE_DH.value)
+def create_packet(proxies, circuit, payload, server_addr = None, server_port = None,  dst_num = None):
+    #dst_num is the number of hops, using it allows us to send messages to relays for key exchanges
+    # If dst_num is None, message is sent to the server
+    if dst_num == None:
+        dst_num = len(circuit) + 1
     
-    for i in range(len(circuit) - 1, -1, -1):
-        proxy = proxies[circuit[i]]
-        inner = PacketFormat.Request_Packet(src_addr= client_addr, 
-                                            src_port= client_port, 
-                                            dest_addr= proxy["host"], 
-                                            dst_port= proxy["port"], 
-                                            payload = None,
-                                            relay_type= crypto_utils.RelayFlag.RELAY.value)
-        if i == 0:
-            packet.Request_Packet = PacketFormat.to_bytes_rep(inner)
-        else:
-            inner.payload = packet.Request_Packet
-            packet.Request_Packet = PacketFormat.to_bytes_rep(inner)
-    
+    # innermost packet has actual payload, others have the inner packet as payload
+    cur_payload = payload
+    for i in range(dst_num - 1, -1, -1):
+        if dst_num == len(circuit) + 1 and i == dst_num - 1: # If sending to server, innermost packet has server address and port
+            packet = PacketFormat.Packet(
+                                        dst_addr= server_addr, 
+                                        dst_port= server_port, 
+                                        payload = cur_payload)
+        else: # Otherwise, dst is the next relay in the circuit
+            cur_proxy = proxies[circuit[i]]
+            packet = PacketFormat.Packet(
+                                        dst_addr= cur_proxy["host"], 
+                                        dst_port= cur_proxy["port"], 
+                                        payload = cur_payload)
+        # Update cur_payload for next packet
+        cur_payload = PacketFormat.to_bytes_rep(packet)        
+
     return PacketFormat.to_bytes_rep(packet)
 
 def main():
