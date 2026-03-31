@@ -6,16 +6,18 @@ import socket
 import threading
 import queue
 import crypto_utils
-from threading import Lock # PROB WONT USE
+from threading import Lock
 import pickle
 import packet as PacketFormat
 
 ACTIVE_PROXIES_DIR = "active_proxies"
 HOST = "127.0.0.1"
 # FOr demo purposes leave it like this for now other wise it will take forever to clean up
-#EXTEND THESE IF TIMEOUT TWO FAST
 RECEIVE_TIMEOUT = 5
 RELAY_TIMEOUT = 5
+
+# Only remove the key from when the session is finish
+client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
 
 class Proxy:
     def __init__(self, host):
@@ -47,7 +49,7 @@ class Proxy:
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
             print(f"Removed proxy {self.proxy_id} from active_proxies")
-    # ONLY USE THIS IF WE USE DICTIONARY TO STORE THE FORWARD SOCKETS, prob wont need this tho tbh
+
     def relay_send(self, client_name, data):
         sock = self.send_sockets.get(client_name)
         if not sock:
