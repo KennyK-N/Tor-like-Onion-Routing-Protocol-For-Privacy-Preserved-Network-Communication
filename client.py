@@ -12,10 +12,7 @@ ACTIVE_PROXIES_DIR = "active_proxies"
 MIN_PROXY = 3
 dh_key_info = [] # This is an array of dictionaries, {relay #: {}}
 exchange_cond = threading.Condition() # condition to synchronize key exchange process
-temp_iv = b'\x00' * 16 # Temporary IV for testing, replace with random IV for actual encryption/decryption
-"""
-Only do DH exchange if key None 
-"""
+
 def discover_proxies():
     proxies = {}
 
@@ -90,9 +87,9 @@ def listen_to_proxy(proxy_sock, circuit):
             if key_exchange_num < len(circuit): # If this is a key exchange packet, perform key exchange and store the symmetric key
                 relay_num = 0
                 for i in range(key_exchange_num):
-                    packet = packet.payload
-                    # TODO: replace temp_iv use 
-                    cipher = crypto_utils.create_cipher(dh_key_info[i]["symm_key"], temp_iv)
+                    iv = packet.iv
+                    packet = packet.payload 
+                    cipher = crypto_utils.create_cipher(dh_key_info[i]["symm_key"], iv)
                     decrypted_payload = crypto_utils.aes_decrypt(cipher, packet)
                     if isinstance(decrypted_payload, bytes):
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
@@ -138,62 +135,45 @@ def listen_to_proxy(proxy_sock, circuit):
 # Takes input and puts it in a layered packet to send through the circuit
 def send_input_to_proxy(proxy_sock, circuit, proxies):
     try:
-        while True:
-            serveraddr = input("Enter Server IP: ")
-            port = input("Enter Server Port #: ")
+        serveraddr = input("Enter Server IP: ")
+        port = input("Enter Server Port #: ")
 
-            # TODO:
-            # perform key exchange
-            with exchange_cond: 
-                if len(dh_key_info) == 0:
-                    for i in range(len(circuit)):
-                        private_key, public_key = crypto_utils.generate_ecdh_keypair()
-                        dh_key_info.append({"private_key": private_key, "public_key": public_key, "symm_key": None}) # symm_key will be filled after key exchange response is received
-
-                        # Send a exchange packet to relay i with the public key
-                        proxy_sock.sendall(
-                            create_packet(
-                                proxies,
-                                circuit,
-                                payload=crypto_utils.serialize_public_key(public_key),
-                                dst_num=i+1
-                            )
-                        )
-                        # Wait for response before sending next key exchange packet
-                        exchange_cond.wait_for(lambda: dh_key_info[i]["symm_key"] is not None)
-                        print(f"Symmetric key for relay {i+1} established.")
-                    
-                """
-                custom_lst
+        with exchange_cond: 
+            if len(dh_key_info) == 0:
                 for i in range(len(circuit)):
-                    send the EXCHANGE packet to each hop invidually and wait for a response, 
-                    e.g  
-                    Itt1: Req: client -> hop1, send-thread goes into wait/sleep, Res :client <- hop1, receive threads recieves packet wakes up send thread
-                    Itt2: Req: client -> hop1 -> hop2, send-thread goes into wait/sleep, Res :client <- hop1 <- hop2, receive threads recieves packet wakes up send thread
-                    Itt3: Req: client -> hop1 -> hop2 -> hop3, send-thread goes into wait/sleep, Res :client <- hop1 <- hop2 <- hop3, receive threads recieves packet wakes up send thread 
-                    Itt4, etc. repeat similarly to above process
-                    use cond.wait() Thread goes into waiting mode till it receives a response, times out after certain time limit
-                    
-                    pseudo code for constructing the packet
-                    custom_lst.append(circuit[i])
-                    for i in range(len(custom_lst) - 1, -1, -1):
-                        construct the packet starting from inner to outer, NOTE: no idea if this is correct so verify this :)
-                    
-                    Then send and wait, i.e do the thing above
-                """
+                    private_key, public_key = crypto_utils.generate_ecdh_keypair()
+                    dh_key_info.append({"private_key": private_key, "public_key": public_key, "symm_key": None}) # symm_key will be filled after key exchange response is received
 
-            #TODO
-            #NOTE: LOGIC MAY NOT 100 PERCENT BE CORRECT MAKE SURE TO VERIFY
-            """
-            FIRST CREATE A PACKET THAT CONTAINS THE SERVER AND THE ORIGINAL MESSAGE
-            
-            THEN IN THIS LOOP:
-            for i in range(len(circuit) - 1, -1, -1):
-                CREATE A NEW PACKET, STORE THE ORIGINAL PAYLOAD IN THE NEW PACKET, ENCRYPT THE PAYLOAD WITH THE CORRESPONDING KEY
+                    # Send a exchange packet to relay i with the public key
+                    proxy_sock.sendall(
+                        create_packet(
+                            proxies,
+                            circuit,
+                            payload=crypto_utils.serialize_public_key(public_key),
+                            dst_num=i+1
+                        )
+                    )
+                    # Wait for response before sending next key exchange packet
+                    exchange_cond.wait_for(lambda: dh_key_info[i]["symm_key"] is not None)
+                    print(f"Symmetric key for relay {i+1} established.")
 
-            AFTER YOU HAVE THE PACKET CONSTRUCT THE ONION PACKET SEND IT OVER
-            """ 
-            # proxy_sock.sendall(pickle.dumps(test))
+            # TODO: After key exchange is done, allow for other messages
+            while True:
+                message = input("Enter message to send to server (or 'exit' to quit): ")
+                if message.lower() == "exit":
+                    break
+
+                # Send a packet containing the message
+                proxy_sock.sendall(
+                    create_packet(
+                        proxies, 
+                        circuit, 
+                        payload=message.encode(), 
+                        server_addr=serveraddr, 
+                        server_port=int(port)
+                    )
+                )
+                    
     except Exception as e:
         _, _, tb = sys.exc_info()
 
@@ -210,24 +190,29 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
     
     # innermost packet has actual payload, others have the inner packet as payload
     cur_payload = payload
+    cur_iv = None # innermost layer has an unencrypted payload, so no IV needed
     for i in range(dst_num - 1, -1, -1):
         if i == len(circuit): # If sending to server, innermost packet has server address and port
             packet = PacketFormat.Packet(
                                         payload = cur_payload,
                                         dst_addr= server_addr, 
                                         dst_port= server_port,
+                                        iv = cur_iv
                                         )
         else: # Otherwise, dst is the next relay in the circuit
             cur_proxy = proxies[circuit[i]]
             packet = PacketFormat.Packet(
                                         payload = cur_payload,
                                         dst_addr= cur_proxy["host"], 
-                                        dst_port= cur_proxy["port"] 
+                                        dst_port= cur_proxy["port"], 
+                                        iv = cur_iv
                                         )
-
+        
+        # Update IV for next iteration
+        cur_iv = os.urandom(16) 
         # TODO: encrypt all non-outermost packets with the corresponding symmetric key
         if i != 0: # If this is not the outermost packet, encrypt with the corresponding symmetric key for relay i
-            cipher = crypto_utils.create_cipher(dh_key_info[i-1]["symm_key"], temp_iv) # TODO: replace temp_iv use
+            cipher = crypto_utils.create_cipher(dh_key_info[i-1]["symm_key"], cur_iv) 
             cur_payload = crypto_utils.aes_encrypt(cipher, PacketFormat.to_bytes_rep(packet))
         else:
             # Update cur_payload for next packet

@@ -24,10 +24,11 @@ class Packet_Type(Enum):
     EXCHANGE = 2 # For Diffie-Hellman exchange
 
 class Packet:
-    def __init__(self, payload, dst_addr= None, dst_port = None):
+    def __init__(self, payload, iv=None, dst_addr= None, dst_port = None):
+        self.payload = payload # can either be the actual message or the another packet object, either way this will be encrypted by the client, and decrypted as it traverses
         self.dst_addr = dst_addr
         self.dst_port = dst_port
-        self.payload = payload # can either be the actual message or the another packet object, either way this will be encrypted by the client, and decrypted as it traverses
+        self.iv = iv # IV used for AES encryption/decryption of payload
 
 class Onion_Packet:
     def __init__(self, Data_packet, num_layer, packet_type, Respond_packet=None):

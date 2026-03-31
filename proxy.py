@@ -80,11 +80,12 @@ class Proxy:
                 
 
                 #TODO: encrypt data with symm_key before putting in payload
-                cipher = crypto_utils.create_cipher(symm_key, temp_iv) # TODO: replace temp_iv use
+                iv = os.urandom(16) 
+                cipher = crypto_utils.create_cipher(symm_key, iv)
                 encrypted_data = crypto_utils.aes_encrypt(cipher, data)
 
 
-                packet = PacketFormat.Packet(payload=encrypted_data)
+                packet = PacketFormat.Packet(iv=iv, payload=encrypted_data)
                 client_sock.sendall(PacketFormat.to_bytes_rep(packet))
                 print("Forwarded response back")
 
@@ -142,7 +143,7 @@ class Proxy:
 
                 # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
                 if symm_key is not None:
-                    cipher = crypto_utils.create_cipher(symm_key, temp_iv) # TODO: replace temp_iv use
+                    cipher = crypto_utils.create_cipher(symm_key, packet.iv) 
                     payload = crypto_utils.aes_decrypt(cipher, packet.payload)
                 else:
                     payload = packet.payload
@@ -175,7 +176,7 @@ class Proxy:
                     salt = os.urandom(16) # Generate random salt
                     
                     # Get symmetric key using the client's public key and the relay's private key
-                    symm_key = crypto_utils.derive_shared_key(private, crypto_utils.load_public_key(data), salt)
+                    symm_key = crypto_utils.derive_shared_key(private, crypto_utils.load_public_key(payload), salt)
                     packet = PacketFormat.Packet(
                         payload = {
                             "public_key": crypto_utils.serialize_public_key(public),
