@@ -38,7 +38,6 @@ def discover_proxies():
                         "host": host,
                         "port": port,
                         # "verification_key": verification_key, Can be used for verification later if wanted
-                        "symmetric_key": None # This will be filled after key exchange
                     }
                     
         i += 1
@@ -108,6 +107,7 @@ def listen_to_proxy(proxy_sock, circuit):
                     dh_key_info[relay_num]["symm_key"] = symm_key
                     exchange_cond.notify()
                 print(f"Derived symmetric key for relay {relay_num+1}")
+                print(f"Got message {packet.payload["test_message"]}") # TODO: remove this after testing
                 key_exchange_num += 1
             else: # If this is a response packet, decrypt the packet layer by layer and print the response
                 for i in range(len(circuit)):
@@ -120,30 +120,7 @@ def listen_to_proxy(proxy_sock, circuit):
                     else: # Get next packet layer
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
 
-            #TODO:
-            """
-            IF packet_type == crypto_utils.Packet_Type.EXCHANGE_DH.value:
-                
-                if CLIENT_DH_KEY == NONE: CREATE A DICTIONARY
-
-                ITTERATE OVER THE PAYLOAD UNTIL, THERE IS NO MORE PACKET (USE IF isinstance) 
-                AND YOU GET THE SALT
-                AND THE RELAY PUBLIC KEY
-
-                PEFORM DH KEY EXCHANGE
-
-                STORE THE KEY WITH THE CORRESPONDING RELAY
-
-                WAKE UP THE SENDER PROB DONT NEED MUTEX IF WE USE SYNCHRONIZATON AND MUTAL EXCLUSION 
-
-                AND EXIT THIS BRANCH
-
-            ELIF packet_type == crypto_utils.Packet_Type.RESPONSE.value:
-
-                DECRYPT PAYLOAD STARTING WITH THE ENTRY RELAY KEY TO OUTER RELAY KEY, VERIFY THIS
-                THEN PRINT IT
-            """
-
+            
 
 
             print(f"Received {len(data)} bytes from proxy: {data[:50]}...")
@@ -162,8 +139,8 @@ def listen_to_proxy(proxy_sock, circuit):
 def send_input_to_proxy(proxy_sock, circuit, proxies):
     try:
         while True:
-            serveraddr = input("Enter Server Ip")
-            port = input("Enter Server Port")
+            serveraddr = input("Enter Server IP: ")
+            port = input("Enter Server Port #: ")
 
             # TODO:
             # perform key exchange
@@ -247,11 +224,14 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
                                         dst_addr= cur_proxy["host"], 
                                         dst_port= cur_proxy["port"] 
                                         )
-        # TODO: Encrypt the packet with the corresponding symmetric key if its not the innermost packet (i.e. the server packet)
 
-
-        # Update cur_payload for next packet
-        cur_payload = PacketFormat.to_bytes_rep(packet)        
+        # TODO: encrypt all non-outermost packets with the corresponding symmetric key
+        if i != 0: # If this is not the outermost packet, encrypt with the corresponding symmetric key for relay i
+            cipher = crypto_utils.create_cipher(dh_key_info[i-1]["symm_key"], temp_iv) # TODO: replace temp_iv use
+            cur_payload = crypto_utils.aes_encrypt(cipher, PacketFormat.to_bytes_rep(packet))
+        else:
+            # Update cur_payload for next packet
+            cur_payload = PacketFormat.to_bytes_rep(packet) 
 
     return PacketFormat.to_bytes_rep(packet)
 

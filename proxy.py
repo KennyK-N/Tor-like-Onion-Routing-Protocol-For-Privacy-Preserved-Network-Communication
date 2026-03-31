@@ -98,7 +98,7 @@ class Proxy:
             except Exception:
                 pass
 
-    # Handle client->server communication
+    # Handle Client -> Server communication
     def relay_logic(self, client_sock, socket_name):
         print(f"Incoming thread handling connection from prev node")
         retry_counter_data = 0
@@ -140,13 +140,18 @@ class Proxy:
                 else:
                     continue  
 
-                # Decrypt payload, if there's an internal packet, set it here
-                payload = packet.payload                
+                # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
+                if symm_key is not None:
+                    cipher = crypto_utils.create_cipher(symm_key, temp_iv) # TODO: replace temp_iv use
+                    payload = crypto_utils.aes_decrypt(cipher, packet.payload)
+                else:
+                    payload = packet.payload
+
                 try: # Check if payload is a pickled Packet
                     payload = PacketFormat.to_obj_rep(payload)
                 except Exception:
                     pass
-                if isinstance(payload, PacketFormat.Packet): # If there's an internal packet, it means this is not for a key exchange
+                if isinstance(payload, PacketFormat.Packet): # If there's an internal packet, it means this should be forwarded
                     # Start a listener thread for the forward if we are forwarding for the first time, 
                     # otherwise we can just use the same forward socket since the listener thread would already be running
                     if forward_sock is None:
@@ -164,8 +169,8 @@ class Proxy:
                     # Forward the internal packet to the next relay/server
                     forward_sock.sendall(PacketFormat.to_bytes_rep(payload))
                 
-                else: # If the payload isn't a packet, it means this is for a key exchange
-                    # Generate key pair and salt for this exchange
+                else: # If the payload isn't a packet, it is for a key exchange with this relay
+                    # Generate key pair and salt for the exchange
                     private, public = crypto_utils.generate_ecdh_keypair()
                     salt = os.urandom(16) # Generate random salt
                     
