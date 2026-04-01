@@ -13,8 +13,10 @@ import packet as PacketFormat
 ACTIVE_PROXIES_DIR = "active_proxies"
 HOST = "127.0.0.1"
 # FOr demo purposes leave it like this for now other wise it will take forever to clean up
-RECEIVE_TIMEOUT = 5
-RELAY_TIMEOUT = 5
+PROXY_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
+NUM_ATTEMPTS_DATA = 10
+NUM_ATTEMPTS_TIME_OUT = 5
+DAEMON_FLAG=True
 
 # Only remove the key from when the session is finish
 client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
@@ -36,7 +38,6 @@ class Proxy:
 
         self.running = True
         self.receive_sockets={} # For sockets where the relay is receiving
-        self.send_sockets={} # For sockets where the relay is forwarding
 
         self.thread = None
 
@@ -50,36 +51,51 @@ class Proxy:
             os.remove(self.file_path)
             print(f"Removed proxy {self.proxy_id} from active_proxies")
 
-    def relay_send(self, client_name, data):
-        sock = self.send_sockets.get(client_name)
-        if not sock:
-            print(f"No socket found for {client_name}")
-            return False
-        try:
-            sock.sendall(data) 
-            return True
-        except Exception as e:
-            print(f"Error sending to {client_name}: {e}, closing socket.")
-            try:
-                sock.close()
-            except Exception as close_err:
-                print(f"Error closing socket for {client_name}: {close_err}")
-            finally:
-                self.send_sockets.pop(client_name, None)
-                return False
+    # def relay_send(self, client_name, data):
+    #     sock = self.send_sockets.get(client_name)
+    #     if not sock:
+    #         print(f"No socket found for {client_name}")
+    #         return False
+    #     try:
+    #         sock.sendall(data) 
+    #         return True
+    #     except Exception as e:
+    #         print(f"Error sending to {client_name}: {e}, closing socket.")
+    #         try:
+    #             sock.close()
+    #         except Exception as close_err:
+    #             print(f"Error closing socket for {client_name}: {close_err}")
+    #         finally:
+    #             self.send_sockets.pop(client_name, None)
+    #             return False
 
     # Handle Server-> Client Commmunication
     def forward_listener(self, forward_sock, client_sock, symm_key):
         try:
-            # forward_sock.settimeout(RECEIVE_TIMEOUT)
+            retry_counter_timeout = 0
+            retry_counter_data = 0
+            forward_sock.settimeout(PROXY_TIMEOUT)
             while self.running:
-                # try:
-                data = forward_sock.recv(4096)
-                # except socket.timeout:
-                #     break
+                try:
+                    data = forward_sock.recv(4096)
+                except socket.timeout:
+                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                        print("Error: Connection timed out while waiting for data")
+                        break
+                    else:
+                        retry_counter_timeout += 1
+                        continue
+
+                retry_counter_timeout=0
+
                 if not data:
-                    break
+                    if retry_counter_data > NUM_ATTEMPTS_DATA:
+                        raise Exception("Failed to receive Data from client or relay")
+                    else:
+                        retry_counter_data += 1
+                        continue
                 
+                retry_counter_data = 0
 
                 #TODO: encrypt data with symm_key before putting in payload
                 iv = os.urandom(16) 
@@ -105,25 +121,22 @@ class Proxy:
     def relay_logic(self, client_sock, socket_name):
         print(f"Incoming thread handling connection from prev node")
         retry_counter_data = 0
-        NUM_ATTEMPTS_DATA = 10
-        NUM_ATTEMPTS_TIME_OUT = 2
         retry_counter_timeout = 0
         forward_sock = None 
         symm_key = None # symmetric key from key exchange
         try:
-            # client_sock.settimeout(RECEIVE_TIMEOUT)
+            client_sock.settimeout(PROXY_TIMEOUT)
             while self.running:
                 # Time out mechanism to time out recv
-                # try:
-                data = client_sock.recv(4096)
-                print(f"received data from prev node")
-                # except socket.timeout:
-                #     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
-                #         print("Error: Connection timed out while waiting for data")
-                #         break
-                #     else:
-                #         retry_counter_timeout += 1
-                #         continue
+                try:
+                    data = client_sock.recv(4096)
+                except socket.timeout:
+                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                        print("Error: Connection timed out while waiting for data")
+                        break
+                    else:
+                        retry_counter_timeout += 1
+                        continue
 
                 retry_counter_timeout=0
 
@@ -209,7 +222,7 @@ class Proxy:
     def start_relay(self, server_sock, host, port):
         print(f"Proxy {self.proxy_id} listening on {host}:{port}")
         server_sock.listen()
-        # server_sock.settimeout(RELAY_TIMEOUT)
+        server_sock.settimeout(PROXY_TIMEOUT)
 
         while self.running:
             try:
@@ -224,8 +237,9 @@ class Proxy:
                 )
 
                 t.start()
-            # except socket.timeout:
-            #     pass
+
+            except socket.timeout:
+                pass
             except Exception as e:
                 print("Error: ", e)
                 continue
@@ -234,8 +248,7 @@ class Proxy:
     def start(self):
         try:
             self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port),
-            daemon=True # Maybe delete later
-                                           )
+            daemon=DAEMON_FLAG)
             self.thread.start()
 
             #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
@@ -245,7 +258,6 @@ class Proxy:
                     break
 
         finally:
-            print("\nShutting down proxy...")
             self.unregister()
             self.running = False
 
@@ -255,16 +267,13 @@ def setup_signal_handlers(proxy):
         print("\nShutting down proxy...")
         proxy.unregister()
         proxy.running=False
-        # proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
+        if not DAEMON_FLAG:
+            proxy.thread.join() 
         proxy.relay_socket.close()
         recv_socket_list = proxy.receive_sockets
-        send_socket_list = proxy.send_sockets
 
         for key in recv_socket_list:
             recv_socket_list[key].close()
-
-        for key in send_socket_list:
-            send_socket_list[key].close()
 
         sys.exit(0)
 
@@ -276,17 +285,15 @@ def main():
     proxy.register()
     setup_signal_handlers(proxy)
     proxy.start()
-    # proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
-    
+
+    if not DAEMON_FLAG:
+        proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
+    print("Proxy has been successfully shut downed")
     # clean up
     recv_socket_list = proxy.receive_sockets
-    send_socket_list = proxy.send_sockets
 
     for key in recv_socket_list:
         recv_socket_list[key].close()
-
-    for key in send_socket_list:
-        send_socket_list[key].close()
 
     proxy.relay_socket.close()
 

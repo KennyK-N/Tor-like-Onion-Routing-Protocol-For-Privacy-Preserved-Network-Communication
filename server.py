@@ -10,11 +10,10 @@ import crypto_utils
 from threading import Lock
 import pickle
 import packet as PacketFormat
-# Need two-way communication between the server and the client, cuz server is like website server, it's gotta send the website back to the client
-# We don't actually have to do the request stuff, we just gotta let the server have the ability to send stuff back
+# FOr demo purposes leave it like this for now other wise it will take forever to clean up
 HOST = "127.0.0.1"
-RECEIVE_TIMEOUT = 5
-SERVER_TIMEOUT = 5
+SERVER_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
+DAEMON_FLAG=True
 
 class Server:
     def __init__(self, host):
@@ -34,18 +33,18 @@ class Server:
         NUM_ATTEMPTS_TIME_OUT = 2
         retry_counter_timeout = 0
         try:
-            client_sock.settimeout(RECEIVE_TIMEOUT)
+            client_sock.settimeout(SERVER_TIMEOUT)
             while self.running:
                 # Time out mechanism to time out recv
-                # try:
-                data = client_sock.recv(4096)
-                # except socket.timeout:
-                #     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
-                #         print("Error: Connection timed out while waiting for data")
-                #         break
-                #     else:
-                #         retry_counter_timeout += 1
-                #         continue
+                try:
+                    data = client_sock.recv(4096)
+                except socket.timeout:
+                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                        print("Error: Connection timed out while waiting for data")
+                        break
+                    else:
+                        retry_counter_timeout += 1
+                        continue
 
                 retry_counter_timeout=0
 
@@ -58,11 +57,12 @@ class Server:
                         continue
 
                 if isinstance(data, bytes):
-                    data = pickle.loads(data)
+                    data = PacketFormat.to_obj_rep(data)
                 else:
                     continue
-
-                print("Got a packet, sending message back to client")
+                    
+                message = data.payload
+                print(f"Got a packet, sending message back to client, data is: {message}")
                 packet = PacketFormat.Packet(payload="This is from server")
                 client_sock.sendall(PacketFormat.to_bytes_rep(packet))
 
@@ -82,7 +82,7 @@ class Server:
     def start_relay(self, server_sock, host, port):
         print(f"Server {self.server_id} listening on {host}:{port}")
         server_sock.listen()
-        # server_sock.settimeout(SERVER_TIMEOUT)
+        server_sock.settimeout(SERVER_TIMEOUT)
 
         while self.running:
             try:
@@ -97,8 +97,8 @@ class Server:
                 )
 
                 t.start()
-            # except socket.timeout:
-            #     pass
+            except socket.timeout:
+                pass
             except Exception as e:
                 print("Error: ", e)
                 continue
@@ -106,7 +106,7 @@ class Server:
 
     def start(self):
         try:
-            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port))
+            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port), daemon=DAEMON_FLAG)
             self.thread.start()
 
             #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
@@ -116,7 +116,6 @@ class Server:
                     break
 
         finally:
-            print("\nShutting down server...")
             self.running = False
 
 # ---- graceful shutdown handling ----
@@ -124,12 +123,16 @@ def setup_signal_handlers(server):
     def shutdown_handler(signum, frame):
         print("\nShutting down server...")
         server.running=False
-        server.thread.join()
+        if not DAEMON_FLAG:
+            server.thread.join()
         server.relay_socket.close()
         recv_socket_list = server.receive_sockets
 
         for key in recv_socket_list:
-            recv_socket_list[key].close()
+            try:
+                recv_socket_list[key].close()
+            except:
+                continue
 
         sys.exit(0)
 
@@ -140,13 +143,18 @@ def main():
     server = Server(HOST)
     setup_signal_handlers(server)
     server.start()
-    server.thread.join()
-    
+
+    if not DAEMON_FLAG:
+        server.thread.join()
+    print("Server has been successfully shut downed")
     # clean up
     recv_socket_list = server.receive_sockets
 
     for key in recv_socket_list:
-        recv_socket_list[key].close()
+        try:
+            recv_socket_list[key].close()
+        except:
+            continue
 
     server.relay_socket.close()
 # ---- MAIN ----

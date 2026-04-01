@@ -45,7 +45,7 @@ def discover_proxies():
 def choose_circuit(proxies, k=3):
     proxy_ids = list(proxies.keys())
 
-    if len(proxy_ids) < MIN_PROXY:
+    if len(proxy_ids) < MIN_PROXY or k > len(proxies):
         raise ValueError("Not enough proxies available")
 
     return random.sample(proxy_ids, k)
@@ -104,7 +104,7 @@ def listen_to_proxy(proxy_sock, circuit):
                     dh_key_info[relay_num]["symm_key"] = symm_key
                     exchange_cond.notify()
                 print(f"Derived symmetric key for relay {relay_num+1}")
-                print(f"Got message {packet.payload["test_message"]}") # TODO: remove this after testing
+                print(f"Got message {packet.payload['test_message']}") # TODO: remove this after testing
                 key_exchange_num += 1
             else: # If this is a response packet, decrypt the packet layer by layer and print the response
                 for i in range(len(circuit)):
@@ -168,7 +168,9 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                         server_port=int(port)
                     )
                 )
-                    
+    except KeyboardInterrupt:
+        pass      
+
     except Exception as e:
         _, _, tb = sys.exc_info()
 
@@ -234,3 +236,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+#TODO IMPLEMENT GRACEFUL EXIT FOR CLIENT, RTT USING DATE TIME, HOPS AND ID IN OUTERMOST PACKET,
+# HMAC, AND MAKE IT MORE THREAD SAFE????, ALSO FOR PROXIES STORE KEY IN DICTIONARY NOT LOCAL
