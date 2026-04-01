@@ -100,7 +100,7 @@ class Proxy:
                 retry_counter_data = 0
                 outer_packet = PacketFormat.to_obj_rep(data)
                 data = outer_packet.payload
-                #TODO IMPLEMENT HMAC VERIFY HERE
+                #TODO IMPLEMENT HMAC HERE
 
                 #TODO: encrypt data with symm_key before putting in payload
                 iv = os.urandom(16) 
@@ -164,14 +164,14 @@ class Proxy:
                     continue  
 
                 packet = PacketFormat.to_obj_rep(outer_packet.payload)
-                print(packet.HMAC)
-                
+
                 #TODO IMPLEMENT HMAC VERIFY HERE
                 if(packet.HMAC != None):
                     h = hmac.HMAC(symm_key, hashes.SHA256())
                     message = b"message to hash"
                     h.update(message)
                     h.verify(packet.HMAC)
+                    print("HMAC SUCCESSFULLY VERIFIED") #TODO REMOVE POSSIBLY
 
                 # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
                 if symm_key is not None:

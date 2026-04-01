@@ -129,7 +129,7 @@ def listen_to_proxy(proxy_sock, circuit):
                         print(f"Server ID is: {outer_packet.client_id}")
                         print(f"Received response from server: {packet.payload}")
                     else: # Get next packet layer
-                        #TODO HMAC HERE
+                        #TODO HMAC HERE FOR NON EXCHANGE PACKET
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
 
         
@@ -159,7 +159,7 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                             proxies,
                             circuit,
                             payload=crypto_utils.serialize_public_key(public_key),
-                            dst_num=i+1
+                            dst_num=i+1, EXCHANGE=True
                         )
                     outer_packet = PacketFormat.Onion_Packet(payload = inner_packet, 
                                               rtt = datetime.datetime.now(),
@@ -201,7 +201,7 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
         proxy_sock.close()
         print("Input thread shutting down.")
 
-def create_packet(proxies, circuit, payload, server_addr = None, server_port = None,  dst_num = None):
+def create_packet(proxies, circuit, payload, server_addr = None, server_port = None,  dst_num = None, EXCHANGE=False):
     #dst_num is the number of hops, using it allows us to send messages to relays for key exchanges
     # If dst_num is None, message is sent to the server
     if dst_num == None:
@@ -221,11 +221,12 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
         else: # Otherwise, dst is the next relay in the circuit
             #TODO: fix the conditions its weird
             digest=None
-            # if len(dh_key_info) == (len(circuit)):
-            #     message = b"message to hash"
-            #     h = hmac.HMAC(dh_key_info[i-1]["symm_key"], hashes.SHA256())
-            #     h.update(message)
-            #     digest = h.finalize()
+            
+            if not EXCHANGE:
+                message = b"message to hash"
+                h = hmac.HMAC(dh_key_info[i]["symm_key"], hashes.SHA256())
+                h.update(message)
+                digest = h.finalize()
 
             cur_proxy = proxies[circuit[i]]
             packet = PacketFormat.Packet(
