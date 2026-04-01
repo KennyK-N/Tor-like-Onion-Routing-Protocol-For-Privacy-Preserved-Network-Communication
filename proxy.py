@@ -9,6 +9,7 @@ import crypto_utils
 from threading import Lock
 import pickle
 import packet as PacketFormat
+from cryptography.hazmat.primitives import hashes, hmac
 
 ACTIVE_PROXIES_DIR = "active_proxies"
 HOST = "127.0.0.1"
@@ -77,6 +78,7 @@ class Proxy:
             forward_sock.settimeout(PROXY_TIMEOUT)
             while self.running:
                 try:
+                    outer_packet = None
                     data = forward_sock.recv(4096)
                 except socket.timeout:
                     if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
@@ -94,8 +96,11 @@ class Proxy:
                     else:
                         retry_counter_data += 1
                         continue
-                
+
                 retry_counter_data = 0
+                outer_packet = PacketFormat.to_obj_rep(data)
+                data = outer_packet.payload
+                #TODO IMPLEMENT HMAC VERIFY HERE
 
                 #TODO: encrypt data with symm_key before putting in payload
                 iv = os.urandom(16) 
@@ -104,7 +109,8 @@ class Proxy:
 
 
                 packet = PacketFormat.Packet(iv=iv, payload=encrypted_data)
-                client_sock.sendall(PacketFormat.to_bytes_rep(packet))
+                outer_packet.payload =PacketFormat.to_bytes_rep(packet)
+                client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
                 print("Forwarded response back")
 
         except Exception as e:
@@ -127,6 +133,7 @@ class Proxy:
         try:
             client_sock.settimeout(PROXY_TIMEOUT)
             while self.running:
+                outer_packet = None
                 # Time out mechanism to time out recv
                 try:
                     data = client_sock.recv(4096)
@@ -152,9 +159,19 @@ class Proxy:
 
                 # load data using pickle if needed
                 if isinstance(data, bytes):
-                    packet = PacketFormat.to_obj_rep(data)
+                    outer_packet = PacketFormat.to_obj_rep(data)
                 else:
                     continue  
+
+                packet = PacketFormat.to_obj_rep(outer_packet.payload)
+                print(packet.HMAC)
+                
+                #TODO IMPLEMENT HMAC VERIFY HERE
+                if(packet.HMAC != None):
+                    h = hmac.HMAC(symm_key, hashes.SHA256())
+                    message = b"message to hash"
+                    h.update(message)
+                    h.verify(packet.HMAC)
 
                 # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
                 if symm_key is not None:
@@ -183,7 +200,9 @@ class Proxy:
                         )
                         t.start()
                     # Forward the internal packet to the next relay/server
-                    forward_sock.sendall(PacketFormat.to_bytes_rep(payload))
+                    outer_packet.payload = PacketFormat.to_bytes_rep(payload)
+                    outer_packet.hop = outer_packet.hop - 1
+                    forward_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
                 
                 else: # If the payload isn't a packet, it is for a key exchange with this relay
                     # Generate key pair and salt for the exchange
@@ -202,7 +221,8 @@ class Proxy:
                        
                     # Send back public key and salt so client can derive symmetric key
                     print("Sending key exchange")
-                    client_sock.sendall(PacketFormat.to_bytes_rep(packet))
+                    outer_packet.payload = PacketFormat.to_bytes_rep(packet)
+                    client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
 
         except Exception as e:
             _, _, tb = sys.exc_info()

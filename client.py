@@ -6,8 +6,12 @@ import sys
 import crypto_utils
 import packet as PacketFormat
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, hmac
 import pickle 
+import uuid
+import datetime
 
+CLIENT_ID = str(uuid.uuid4())
 ACTIVE_PROXIES_DIR = "active_proxies"
 MIN_PROXY = 3
 dh_key_info = [] # This is an array of dictionaries, {relay #: {}}
@@ -72,17 +76,23 @@ def listen_to_proxy(proxy_sock, circuit):
     try:
         key_exchange_num = 0
         while True:
+            rtt_end = None
             #TODO: maybe add time out a
             data = proxy_sock.recv(4096)
-
-            if not data:
+            rtt_end = datetime.datetime.now()
+            if not data:    
                 break
                 
 
             if isinstance(data, bytes):
-                packet = PacketFormat.to_obj_rep(data)
+                outer_packet = PacketFormat.to_obj_rep(data)
             else:
                 continue 
+            
+            if rtt_end == None:
+                continue
+
+            packet = PacketFormat.to_obj_rep(outer_packet.payload)
 
             if key_exchange_num < len(circuit): # If this is a key exchange packet, perform key exchange and store the symmetric key
                 relay_num = 0
@@ -114,8 +124,12 @@ def listen_to_proxy(proxy_sock, circuit):
 
                     if i == len(circuit) - 1: # If this is the last layer, print the response
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
+                        print(f"\nRTT is: {rtt_end - outer_packet.rtt}")
+                        print(f"Num Hop IS: {outer_packet.hop}") # TODO: DELETE AFTER I GUESS
+                        print(f"Server ID is: {outer_packet.client_id}")
                         print(f"Received response from server: {packet.payload}")
                     else: # Get next packet layer
+                        #TODO HMAC HERE
                         packet = PacketFormat.to_obj_rep(decrypted_payload)
 
         
@@ -141,13 +155,17 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                     dh_key_info.append({"private_key": private_key, "public_key": public_key, "symm_key": None}) # symm_key will be filled after key exchange response is received
 
                     # Send a exchange packet to relay i with the public key
-                    proxy_sock.sendall(
-                        create_packet(
+                    inner_packet = create_packet(
                             proxies,
                             circuit,
                             payload=crypto_utils.serialize_public_key(public_key),
                             dst_num=i+1
                         )
+                    outer_packet = PacketFormat.Onion_Packet(payload = inner_packet, 
+                                              rtt = datetime.datetime.now(),
+                                              hop = i+1, client_id=CLIENT_ID)
+                    proxy_sock.sendall(
+                        PacketFormat.to_bytes_rep(outer_packet)
                     )
                     # Wait for response before sending next key exchange packet
                     exchange_cond.wait_for(lambda: dh_key_info[i]["symm_key"] is not None)
@@ -157,16 +175,20 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                 message = input("Enter message to send to server (or 'exit' to quit): ")
                 if message.lower() == "exit":
                     break
-
-                # Send a packet containing the message
-                proxy_sock.sendall(
-                    create_packet(
+                inner_packet = create_packet(
                         proxies, 
                         circuit, 
                         payload=message.encode(), 
                         server_addr=serveraddr, 
                         server_port=int(port)
                     )
+                outer_packet = PacketFormat.Onion_Packet(payload = inner_packet, 
+                            rtt = datetime.datetime.now(),
+                            hop = len(circuit),
+                            client_id=CLIENT_ID)
+                # Send a packet containing the message
+                proxy_sock.sendall(
+                    PacketFormat.to_bytes_rep(outer_packet)
                 )
     except KeyboardInterrupt:
         pass      
@@ -194,16 +216,24 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
                                         payload = cur_payload,
                                         dst_addr= server_addr, 
                                         dst_port= server_port,
-                                        iv = cur_iv
-                                        )
+                                        iv = cur_iv,
+                                        HMAC=None)
         else: # Otherwise, dst is the next relay in the circuit
+            #TODO: fix the conditions its weird
+            digest=None
+            # if len(dh_key_info) == (len(circuit)):
+            #     message = b"message to hash"
+            #     h = hmac.HMAC(dh_key_info[i-1]["symm_key"], hashes.SHA256())
+            #     h.update(message)
+            #     digest = h.finalize()
+
             cur_proxy = proxies[circuit[i]]
             packet = PacketFormat.Packet(
                                         payload = cur_payload,
                                         dst_addr= cur_proxy["host"], 
                                         dst_port= cur_proxy["port"], 
-                                        iv = cur_iv
-                                        )
+                                        iv = cur_iv,
+                                        HMAC=digest) #TODO IMPLEMENT HMAC HERE
         
         # Update IV for next iteration
         cur_iv = os.urandom(16) 
@@ -223,7 +253,7 @@ def main():
     print("Available proxies:", list(proxies.keys()))
     circuit = choose_circuit(proxies, len(proxies))
     print("Chosen circuit:", circuit)
-
+    print(f"Current Client_uid: {CLIENT_ID}")
     # print(proxies)
 
     # Connect to first proxy and start listener
@@ -237,5 +267,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-#TODO IMPLEMENT GRACEFUL EXIT FOR CLIENT, RTT USING DATE TIME, HOPS AND ID IN OUTERMOST PACKET,
-# HMAC, AND MAKE IT MORE THREAD SAFE????, ALSO FOR PROXIES STORE KEY IN DICTIONARY NOT LOCAL
+#TODO IMPLEMENT HMAC TOM

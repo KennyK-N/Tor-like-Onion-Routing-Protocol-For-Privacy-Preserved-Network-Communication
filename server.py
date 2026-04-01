@@ -14,7 +14,6 @@ import packet as PacketFormat
 HOST = "127.0.0.1"
 SERVER_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
 DAEMON_FLAG=True
-
 class Server:
     def __init__(self, host):
         self.host = host
@@ -35,6 +34,7 @@ class Server:
         try:
             client_sock.settimeout(SERVER_TIMEOUT)
             while self.running:
+                outer_packet = None
                 # Time out mechanism to time out recv
                 try:
                     data = client_sock.recv(4096)
@@ -57,14 +57,16 @@ class Server:
                         continue
 
                 if isinstance(data, bytes):
-                    data = PacketFormat.to_obj_rep(data)
+                    outer_packet = PacketFormat.to_obj_rep(data)
                 else:
                     continue
-                    
+                data = PacketFormat.to_obj_rep(outer_packet.payload)  
                 message = data.payload
-                print(f"Got a packet, sending message back to client, data is: {message}")
+                print(f"Got a packet, sending message back to client, data is: {message} from client id: {outer_packet.client_id}")
                 packet = PacketFormat.Packet(payload="This is from server")
-                client_sock.sendall(PacketFormat.to_bytes_rep(packet))
+                outer_packet.payload = PacketFormat.to_bytes_rep(packet)
+                outer_packet.client_id = self.server_id
+                client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
 
         except Exception as e:
             print(f"Incoming error: {e}")
