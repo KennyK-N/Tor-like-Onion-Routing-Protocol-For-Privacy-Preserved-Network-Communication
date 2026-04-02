@@ -11,11 +11,12 @@ class Packet:
         self.iv = iv # IV used for AES encryption/decryption of payload
         self.HMAC = HMAC
 class Onion_Packet:
-    def __init__(self, hop, rtt, payload, client_id=None):
+    def __init__(self, hop, rtt, payload, client_id=None, exchange=False):
         self.hop = hop
         self.rtt = rtt
         self.payload = payload
         self.client_id = client_id
+        self.exchange = exchange
 
 def to_bytes_rep(packet):
     return pickle.dumps(packet)

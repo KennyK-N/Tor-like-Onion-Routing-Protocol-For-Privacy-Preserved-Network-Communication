@@ -63,6 +63,8 @@ class Server:
                 data = PacketFormat.to_obj_rep(outer_packet.payload)  
                 message = data.payload
                 print(f"Got a packet, sending message back to client, data is: {message} from client id: {outer_packet.client_id}")
+                if (outer_packet.exchange == False): #TODO DELETE LATER
+                    print("NOT EXCHANGE PACKET") #TODO DELETE LATER
                 packet = PacketFormat.Packet(payload="This is from server")
                 outer_packet.payload = PacketFormat.to_bytes_rep(packet)
                 outer_packet.client_id = self.server_id

@@ -99,16 +99,33 @@ class Proxy:
 
                 retry_counter_data = 0
                 outer_packet = PacketFormat.to_obj_rep(data)
-                data = outer_packet.payload
-                #TODO IMPLEMENT HMAC HERE
+
+                if(outer_packet.exchange==False):
+                    data = PacketFormat.to_obj_rep(outer_packet.payload)
+
+                    if not isinstance(data.payload, bytes):
+                        msg = bytes(data.payload, 'utf-8')
+                        data.payload = msg
+                    data = PacketFormat.to_bytes_rep(data)
+                else:
+                    data = outer_packet.payload
 
                 #TODO: encrypt data with symm_key before putting in payload
                 iv = os.urandom(16) 
                 cipher = crypto_utils.create_cipher(symm_key, iv)
                 encrypted_data = crypto_utils.aes_encrypt(cipher, data)
+                
+                digest = None
+                
+                if(outer_packet.exchange==False):
+                    h = hmac.HMAC(symm_key, hashes.SHA256())
+                    message = encrypted_data
+                    h.update(message)
+                    digest = h.finalize()
+                
+                    print("THIS WORKS I GUESS")
 
-
-                packet = PacketFormat.Packet(iv=iv, payload=encrypted_data)
+                packet = PacketFormat.Packet(iv=iv, payload=encrypted_data, HMAC=digest)
                 outer_packet.payload =PacketFormat.to_bytes_rep(packet)
                 client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
                 print("Forwarded response back")
@@ -166,12 +183,12 @@ class Proxy:
                 packet = PacketFormat.to_obj_rep(outer_packet.payload)
 
                 #TODO IMPLEMENT HMAC VERIFY HERE
-                if(packet.HMAC != None):
+                if(outer_packet.exchange==False and packet.HMAC != None):
                     h = hmac.HMAC(symm_key, hashes.SHA256())
-                    message = b"message to hash"
+                    message = packet.payload
                     h.update(message)
                     h.verify(packet.HMAC)
-                    print("HMAC SUCCESSFULLY VERIFIED") #TODO REMOVE POSSIBLY
+                    print("HMAC SUCCESSFULLY VERIFIED, REQUEST") #TODO REMOVE POSSIBLY
 
                 # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
                 if symm_key is not None:

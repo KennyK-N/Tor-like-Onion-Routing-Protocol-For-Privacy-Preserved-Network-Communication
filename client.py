@@ -118,6 +118,13 @@ def listen_to_proxy(proxy_sock, circuit):
                 key_exchange_num += 1
             else: # If this is a response packet, decrypt the packet layer by layer and print the response
                 for i in range(len(circuit)):
+                    if(outer_packet.exchange==False):
+                        h = hmac.HMAC(dh_key_info[i]["symm_key"], hashes.SHA256())
+                        message = packet.payload
+                        h.update(message)
+                        h.verify(packet.HMAC)
+                        print("HMAC SUCCESSFULLY VERIFIED, RESPONSE")#TODO REMOVE POSSIBLY
+
                     # TODO: decrypt here using the corresponding symmetric key for relay i
                     cipher = crypto_utils.create_cipher(dh_key_info[i]["symm_key"], packet.iv)
                     decrypted_payload = crypto_utils.aes_decrypt(cipher, packet.payload)
@@ -163,7 +170,7 @@ def send_input_to_proxy(proxy_sock, circuit, proxies):
                         )
                     outer_packet = PacketFormat.Onion_Packet(payload = inner_packet, 
                                               rtt = datetime.datetime.now(),
-                                              hop = i+1, client_id=CLIENT_ID)
+                                              hop = i+1, client_id=CLIENT_ID, exchange=True)
                     proxy_sock.sendall(
                         PacketFormat.to_bytes_rep(outer_packet)
                     )
@@ -219,11 +226,10 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
                                         iv = cur_iv,
                                         HMAC=None)
         else: # Otherwise, dst is the next relay in the circuit
-            #TODO: fix the conditions its weird
             digest=None
             
             if not EXCHANGE:
-                message = b"message to hash"
+                message = cur_payload
                 h = hmac.HMAC(dh_key_info[i]["symm_key"], hashes.SHA256())
                 h.update(message)
                 digest = h.finalize()
@@ -234,7 +240,7 @@ def create_packet(proxies, circuit, payload, server_addr = None, server_port = N
                                         dst_addr= cur_proxy["host"], 
                                         dst_port= cur_proxy["port"], 
                                         iv = cur_iv,
-                                        HMAC=digest) #TODO IMPLEMENT HMAC HERE
+                                        HMAC=digest)
         
         # Update IV for next iteration
         cur_iv = os.urandom(16) 
@@ -267,5 +273,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-#TODO IMPLEMENT HMAC TOM
