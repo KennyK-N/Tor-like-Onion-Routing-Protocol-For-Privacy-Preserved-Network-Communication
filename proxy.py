@@ -28,6 +28,10 @@ class Proxy:
         self.proxy_id = str(uuid.uuid4())
         os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True) # make sure directory exists
 
+        # Generate verification key pair for the relay
+        self.private_sign_key, self.public_ver_key = crypto_utils.generate_verification_keys()
+        public_ver_key_string = crypto_utils.serialize_public_key(self.public_ver_key).decode('utf-8').replace("\n", "\\n")
+
         # Socket for incoming connections (from prev node)
         self.relay_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.relay_socket.bind((host, 0))
@@ -35,7 +39,8 @@ class Proxy:
 
         # Info file for this proxy
         self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
-        self.entry = f"{self.proxy_id},{self.host},{self.port}\n" 
+        # Format: proxy_id, host, port, public_ver_key
+        self.entry = f"{self.proxy_id},{self.host},{self.port},{public_ver_key_string}\n" 
 
         self.running = True
         self.receive_sockets={} # For sockets where the relay is receiving
@@ -110,7 +115,6 @@ class Proxy:
                 else:
                     data = outer_packet.payload
 
-                #TODO: encrypt data with symm_key before putting in payload
                 iv = os.urandom(16) 
                 cipher = crypto_utils.create_cipher(symm_key, iv)
                 encrypted_data = crypto_utils.aes_encrypt(cipher, data)
@@ -232,6 +236,8 @@ class Proxy:
                         payload = {
                             "public_key": crypto_utils.serialize_public_key(public),
                             "salt": salt,
+                            "key_signature": crypto_utils.sign_message(self.private_sign_key, crypto_utils.serialize_public_key(public)),
+                            "salt_signature": crypto_utils.sign_message(self.private_sign_key, salt),
                             "test_message": "encryption/decryption successful"
                         }
                     )

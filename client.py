@@ -33,12 +33,13 @@ def discover_proxies():
                 line = f.readline().strip()
                 # Each line format: proxy_id,host,port
                 parts = line.split(",")
-                if len(parts) >= 3:
+                if len(parts) >= 4:
                     proxy_id, host, port = parts[0], parts[1], int(parts[2])
+                    verification_key = parts[3].replace("\\n", "\n").encode()
                     proxies[proxy_id] = {
                         "host": host,
                         "port": port,
-                        # "verification_key": verification_key, Can be used for verification later if wanted
+                        "verification_key": crypto_utils.load_public_key(verification_key)
                     }
                     
         i += 1
@@ -66,12 +67,12 @@ def connect_to_circuit(proxies, circuit):
     print(f"Connected to first proxy {first_proxy_id} at {host}:{port}")
 
     # Start listener thread
-    listener_thread = threading.Thread(target=listen_to_proxy, args=(proxy_sock,circuit,), daemon=True)
+    listener_thread = threading.Thread(target=listen_to_proxy, args=(proxy_sock,circuit,proxies,), daemon=True)
     listener_thread.start()
 
     return proxy_sock
 
-def listen_to_proxy(proxy_sock, circuit):
+def listen_to_proxy(proxy_sock, circuit, proxies):
     """Thread function: listen for incoming packets from the proxy"""
     try:
         key_exchange_num = 0
@@ -108,6 +109,13 @@ def listen_to_proxy(proxy_sock, circuit):
                 # Get public key and salt from the packet payload
                 public_key = crypto_utils.load_public_key(packet.payload["public_key"])
                 salt = packet.payload["salt"]
+                verification_key = proxies[circuit[relay_num]]["verification_key"]
+                # Verify that signatures on the public key and salt are valid
+                if not crypto_utils.verify_signature(verification_key, packet.payload["public_key"], packet.payload["key_signature"]):
+                    raise Exception("Invalid signature on public key from relay {relay_num+1}")
+                if not crypto_utils.verify_signature(verification_key, packet.payload["salt"], packet.payload["salt_signature"]):
+                    raise Exception("Invalid signature on salt from relay {relay_num+1}")
+                
                 # Get symmetric key using the client's private key and the relay's public key
                 with exchange_cond:
                     symm_key = crypto_utils.derive_shared_key(dh_key_info[relay_num]["private_key"], public_key, salt)
@@ -116,6 +124,7 @@ def listen_to_proxy(proxy_sock, circuit):
                 print(f"Derived symmetric key for relay {relay_num+1}")
                 print(f"Got message {packet.payload['test_message']}") # TODO: remove this after testing
                 key_exchange_num += 1
+                
             else: # If this is a response packet, decrypt the packet layer by layer and print the response
                 for i in range(len(circuit)):
                     if(outer_packet.exchange==False):
@@ -125,7 +134,6 @@ def listen_to_proxy(proxy_sock, circuit):
                         h.verify(packet.HMAC)
                         print("HMAC SUCCESSFULLY VERIFIED, RESPONSE")#TODO REMOVE POSSIBLY
 
-                    # TODO: decrypt here using the corresponding symmetric key for relay i
                     cipher = crypto_utils.create_cipher(dh_key_info[i]["symm_key"], packet.iv)
                     decrypted_payload = crypto_utils.aes_decrypt(cipher, packet.payload)
 

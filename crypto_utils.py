@@ -1,5 +1,7 @@
 from cryptography.hazmat.primitives import padding as sym_padding
 from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
@@ -12,33 +14,41 @@ import os
 AES_key_length = 32 # length in bytes 16 24 or 32
 iv_key_length = 16
 
+# RSA Signature/Verification Methods
+def generate_verification_keys(key_size=2048):
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=key_size
+    )
+    public_key = private_key.public_key()
+    return private_key, public_key
 
+def sign_message(private_key, message: bytes) -> bytes:
+    signature = private_key.sign(
+        message,
+        asym_padding.PSS(
+            mgf=asym_padding.MGF1(hashes.SHA256()),
+            salt_length=asym_padding.PSS.MAX_LENGTH
+        ),
+        hashes.SHA256()
+    )
+    return signature
 
-# RSA Key Exchange Methods
-# def one_way_key_exchange_encrypt(pub_key):
-#     secret_key = os.urandom(AES_key_length) #MESSAGE IS IN BYTE FORMAT ALREADY
-#     iv = os.urandom(iv_key_length)
-#     encrypted_key = pub_key.encrypt(
-#         secret_key,
-#         asym_padding.OAEP(
-#             mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
-#             algorithm=hashes.SHA256(),
-#             label=None
-#         )
-#     )
-#     # i dont know if we need encrypt iv or not but u can check later for me thx :)
-#     return {"encrypted_key": encrypted_key, "secret_key": secret_key, "iv": iv}
+def verify_signature(public_key, message: bytes, signature: bytes) -> bool:
+    try:
+        public_key.verify(
+            signature,
+            message,
+            asym_padding.PSS(
+                mgf=asym_padding.MGF1(hashes.SHA256()),
+                salt_length=asym_padding.PSS.MAX_LENGTH
+            ),
+            hashes.SHA256()
+        )
+        return True
+    except InvalidSignature:
+        return False
 
-# def one_way_key_exchange_decrypt(private_key, encrypted_key):
-#     secret_key = private_key.decrypt(
-#         encrypted_key,
-#         asym_padding.OAEP(
-#             mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
-#             algorithm=hashes.SHA256(),
-#             label=None
-#         )
-#     )
-#     return secret_key
 
 # Diffie-Hellman Key Exchange Methods
 # Generate private/public key pair
@@ -47,17 +57,6 @@ def generate_ecdh_keypair(curve=ec.SECP256R1()):
     private_key = ec.generate_private_key(curve)
     public_key = private_key.public_key()
     return private_key, public_key
-
-# Serialize public key so it can be sent on network
-def serialize_public_key(public_key):
-    return public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    )
-
-# Get public key from serialized bytes
-def load_public_key(public_bytes):
-    return serialization.load_pem_public_key(public_bytes)
 
 # Lets client/relays get shared key using other party's public key
 def derive_shared_key(private_key, peer_public_key, salt):
@@ -71,6 +70,18 @@ def derive_shared_key(private_key, peer_public_key, salt):
     ).derive(shared_secret)
 
     return derived_key
+
+
+# Key serialization methods
+def serialize_public_key(public_key):
+    return public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+
+def load_public_key(public_bytes):
+    return serialization.load_pem_public_key(public_bytes)
+
 
 
 # Message encryption/decryption AES methods
