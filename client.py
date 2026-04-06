@@ -29,7 +29,8 @@ class Client:
         self.key_exchange_begin = 0
         self.bytes_received = 0
         self.bytes_send = 0
-        self.session_end = None
+        self.session_end = 0
+        self.session_start = 0
 
     def discover_proxies(self):
         proxies = {}
@@ -77,6 +78,7 @@ class Client:
         port = proxy_info["port"]
 
         proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.session_start = datetime.datetime.now()
         proxy_sock.connect((host, port))
         print(f"Client IP addr and port: {proxy_sock.getsockname()}")
         print(f"Connected to first proxy {first_proxy_id} at {host}:{port}")
@@ -308,7 +310,7 @@ def setup_signal_handlers(client):
 
 def print_stat(client):
     end_session = client.session_end if client.session_end else datetime.datetime.now()
-    session_duration_s = (end_session - client.key_exchange_begin).total_seconds()     
+    session_duration_s = (end_session - client.session_start).total_seconds()     
     session_duration_ms = session_duration_s * 1000
     recv_throughput = (client.bytes_received * 8) / session_duration_s         
     send_throughput = (client.bytes_send * 8) / session_duration_s
