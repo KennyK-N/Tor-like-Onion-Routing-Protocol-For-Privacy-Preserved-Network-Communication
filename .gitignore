@@ -1,5 +1,6 @@
-# Key files
+# Key and active proxy files
 *.pem
+active_proxies
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

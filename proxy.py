@@ -1,60 +1,327 @@
+import uuid
+import signal
 import sys
 import os
+import socket
+import threading
+import queue
+import crypto_utils
+from threading import Lock
+import pickle
+import packet as PacketFormat
+from cryptography.hazmat.primitives import hashes, hmac
 
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
+ACTIVE_PROXIES_DIR = "active_proxies"
+HOST = "127.0.0.1"
+# FOr demo purposes leave it like this for now other wise it will take forever to clean up
+PROXY_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
+NUM_ATTEMPTS_DATA = 10
+NUM_ATTEMPTS_TIME_OUT = 5
+DAEMON_FLAG=True
 
-def generate_keys(proxy_id, folder_path):
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048
-    )
+# Only remove the key from when the session is finish
+client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
 
-    private_path = f"{folder_path}/{proxy_id}_private.pem"
-    public_path = f"{folder_path}/{proxy_id}_public.pem"
+class Proxy:
+    def __init__(self, host):
+        self.host = host
+        self.proxy_id = str(uuid.uuid4())
+        os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True) # make sure directory exists
 
-    # Prevent overwrite
-    if os.path.exists(private_path) or os.path.exists(public_path):
-        print(f"Proxy {proxy_id} keys already exist. Skipping generation.")
-        return
+        # Generate verification key pair for the relay
+        self.private_sign_key, self.public_ver_key = crypto_utils.generate_verification_keys()
+        public_ver_key_string = crypto_utils.serialize_public_key(self.public_ver_key).decode('utf-8').replace("\n", "\\n")
 
-    # Save private key
-    with open(private_path, "wb") as f:
-        f.write(private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            # No encryption for now cuz i don't wanna deal with it :)
-            encryption_algorithm=serialization.NoEncryption()
-        ))
+        # Socket for incoming connections (from prev node)
+        self.relay_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.relay_socket.bind((host, 0))
+        self.host, self.port = self.relay_socket.getsockname()
 
-    # Save public key
-    with open(public_path, "wb") as f:
-        f.write(private_key.public_key().public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ))
+        # Info file for this proxy
+        self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
+        # Format: proxy_id, host, port, public_ver_key
+        self.entry = f"{self.proxy_id},{self.host},{self.port},{public_ver_key_string}\n" 
 
-    print(f"Proxy {proxy_id} keys generated.")
+        self.running = True
+        self.receive_sockets={} # For sockets where the relay is receiving
+
+        self.thread = None
+
+    def register(self):
+        with open(self.file_path, "w") as f:
+            f.write(self.entry)
+        print(f"Registered proxy {self.proxy_id} at {self.host}:{self.port}")
+
+    def unregister(self):
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+            print(f"Removed proxy {self.proxy_id} from active_proxies")
+
+    # Handle Server-> Client Commmunication
+    def forward_listener(self, forward_sock, client_sock, symm_key):
+        try:
+            retry_counter_timeout = 0
+            retry_counter_data = 0
+            forward_sock.settimeout(PROXY_TIMEOUT)
+            while self.running:
+                try:
+                    outer_packet = None
+                    data = forward_sock.recv(4096)
+                except socket.timeout:
+                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                        print("Error: Connection timed out while waiting for data")
+                        break
+                    else:
+                        retry_counter_timeout += 1
+                        continue
+
+                retry_counter_timeout=0
+
+                if not data:
+                    if retry_counter_data > NUM_ATTEMPTS_DATA:
+                        raise Exception("Failed to receive Data from client or relay")
+                    else:
+                        retry_counter_data += 1
+                        continue
+
+                retry_counter_data = 0
+                outer_packet = PacketFormat.to_obj_rep(data)
+
+                if(outer_packet.exchange==False):
+                    data = PacketFormat.to_obj_rep(outer_packet.payload)
+
+                    if not isinstance(data.payload, bytes):
+                        msg = bytes(data.payload, 'utf-8')
+                        data.payload = msg
+                    print(f"Response path, payload before encryption: {data.payload.hex()}")
+                    data = PacketFormat.to_bytes_rep(data)
+                else:
+                    data = outer_packet.payload
+
+                iv = os.urandom(16) 
+                cipher = crypto_utils.create_cipher(symm_key, iv)
+                encrypted_data = crypto_utils.aes_encrypt(cipher, data)
+                
+                digest = None
+                
+                if(outer_packet.exchange==False):
+                    h = hmac.HMAC(symm_key, hashes.SHA256())
+                    message = encrypted_data
+                    h.update(message)
+                    digest = h.finalize()
+                
+                outer_packet.hop+=1
+                packet = PacketFormat.Packet(iv=iv, payload=encrypted_data, HMAC=digest)
+                outer_packet.payload =PacketFormat.to_bytes_rep(packet)
+                client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
+                # print("Forwarded response back")
+
+        except Exception as e:
+            _, _, tb = sys.exc_info()
+
+            print(f"Forward Listener error: {e} at line {tb.tb_lineno}")
+        finally:
+            try:
+                forward_sock.close()
+            except Exception:
+                pass
+
+    # Handle Client -> Server communication
+    def relay_logic(self, client_sock, socket_name):
+        retry_counter_data = 0
+        retry_counter_timeout = 0
+        forward_sock = None 
+        symm_key = None # symmetric key from key exchange
+        try:
+            client_sock.settimeout(PROXY_TIMEOUT)
+            while self.running:
+                outer_packet = None
+                # Time out mechanism to time out recv
+                try:
+                    data = client_sock.recv(4096)
+                except socket.timeout:
+                    if retry_counter_timeout > NUM_ATTEMPTS_TIME_OUT:
+                        print("Error: Connection timed out while waiting for data")
+                        break
+                    else:
+                        retry_counter_timeout += 1
+                        continue
+
+                retry_counter_timeout=0
+
+                # DO NOT DELETE THIS, its when the client abrubtly closes the connection, this allows the relay to close the connection as well
+                if not data:
+                    if retry_counter_data > NUM_ATTEMPTS_DATA:
+                        raise Exception("Failed to receive Data from client or relay")
+                    else:
+                        retry_counter_data += 1
+                        continue
+                
+                retry_counter_data = 0
+
+                # load data using pickle if needed
+                if isinstance(data, bytes):
+                    outer_packet = PacketFormat.to_obj_rep(data)
+                else:
+                    continue  
+
+                packet = PacketFormat.to_obj_rep(outer_packet.payload)
+
+                #TODO IMPLEMENT HMAC VERIFY HERE
+                if(outer_packet.exchange==False and packet.HMAC != None):
+                    h = hmac.HMAC(symm_key, hashes.SHA256())
+                    message = packet.payload
+                    h.update(message)
+                    h.verify(packet.HMAC)
+                    # print("HMAC SUCCESSFULLY VERIFIED, REQUEST") #TODO REMOVE POSSIBLY
+                    print(f"Receive path, payload before decryption: {packet.payload.hex()}")
+
+                # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
+                if symm_key is not None:
+                    cipher = crypto_utils.create_cipher(symm_key, packet.iv) 
+                    payload = crypto_utils.aes_decrypt(cipher, packet.payload)
+                else:
+                    payload = packet.payload
+
+                try: # Check if payload is a pickled Packet
+                    payload = PacketFormat.to_obj_rep(payload)
+                except Exception:
+                    pass
+                if isinstance(payload, PacketFormat.Packet): # If there's an internal packet, it means this should be forwarded
+                    # Start a listener thread for the forward if we are forwarding for the first time, 
+                    # otherwise we can just use the same forward socket since the listener thread would already be running
+                    if forward_sock is None:
+                        forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        forward_sock.connect((payload.dst_addr, payload.dst_port))
+                        
+                        # start listener thread so we can receive the response back
+                        t = threading.Thread(
+                            target=self.forward_listener,
+                            # Note that symm_key will not be None, since first packet will be unlayered, for key exchange, so won't enter this if statement
+                            args=(forward_sock, client_sock, symm_key),
+                            daemon=True
+                        )
+                        t.start()
+                    # Forward the internal packet to the next relay/server
+                    outer_packet.payload = PacketFormat.to_bytes_rep(payload)
+                    outer_packet.hop = outer_packet.hop - 1
+                    forward_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
+                
+                else: # If the payload isn't a packet, it is for a key exchange with this relay
+                    # Generate key pair and salt for the exchange
+                    private, public = crypto_utils.generate_ecdh_keypair()
+                    salt = os.urandom(16) # Generate random salt
+                    
+                    # Get symmetric key using the client's public key and the relay's private key
+                    symm_key = crypto_utils.derive_shared_key(private, crypto_utils.load_public_key(payload), salt)
+                    packet = PacketFormat.Packet(
+                        payload = {
+                            "public_key": crypto_utils.serialize_public_key(public),
+                            "salt": salt,
+                            "key_signature": crypto_utils.sign_message(self.private_sign_key, crypto_utils.serialize_public_key(public)),
+                            "salt_signature": crypto_utils.sign_message(self.private_sign_key, salt),
+                            "test_message": "encryption/decryption successful"
+                        }
+                    )
+                       
+                    # Send back public key and salt so client can derive symmetric key
+                    # print("Sending key exchange")
+                    outer_packet.payload = PacketFormat.to_bytes_rep(packet)
+                    client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
+
+        except Exception as e:
+            _, _, tb = sys.exc_info()
+
+            print(f"Incoming thread error: {e} at line {tb.tb_lineno}")
+
+        finally:
+            print(f"Closed connection for {socket_name}")
+
+            try:
+                client_sock.close()
+            except Exception:
+                pass
+
+            self.receive_sockets.pop(socket_name, None)
+
+    def start_relay(self, server_sock, host, port):
+        print(f"Proxy {self.proxy_id} listening on {host}:{port}")
+        server_sock.listen()
+        server_sock.settimeout(PROXY_TIMEOUT)
+
+        while self.running:
+            try:
+                client_sock, addr = server_sock.accept()
+                print(f"Accepted connection from {addr}")
+                socket_name = client_sock.getpeername()
+                self.receive_sockets[socket_name] = client_sock
+
+                t = threading.Thread(
+                    target=self.relay_logic,
+                    args=(client_sock,socket_name,), daemon=True
+                )
+
+                t.start()
+
+            except socket.timeout:
+                pass
+            except Exception as e:
+                print("Error: ", e)
+                continue
+
+
+    def start(self):
+        try:
+            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port),
+            daemon=DAEMON_FLAG)
+            self.thread.start()
+
+            #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
+            while(True):
+                temp = input()
+                if (temp == "exit"): # THIS EXIT IS GOOD
+                    break
+
+        finally:
+            self.unregister()
+            self.running = False
+
+# ---- graceful shutdown handling ----
+def setup_signal_handlers(proxy):
+    def shutdown_handler(signum, frame):
+        print("\nShutting down proxy...")
+        proxy.unregister()
+        proxy.running=False
+        if not DAEMON_FLAG:
+            proxy.thread.join() 
+        proxy.relay_socket.close()
+        recv_socket_list = proxy.receive_sockets
+
+        for key in recv_socket_list:
+            recv_socket_list[key].close()
+
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, shutdown_handler)
+    signal.signal(signal.SIGTERM, shutdown_handler)
 
 def main():
-    if len(sys.argv) != 2:
-        print("Needs proxy_id as argument")
-        sys.exit(1)
+    proxy = Proxy(HOST)
+    proxy.register()
+    setup_signal_handlers(proxy)
+    proxy.start()
 
-    folder_path = "relays_PKE_keys"
-    if not os.path.isdir(folder_path):
-        os.makedirs(folder_path)
+    if not DAEMON_FLAG:
+        proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
+    print("Proxy has been successfully shut downed")
+    # clean up
+    recv_socket_list = proxy.receive_sockets
 
-    proxy_id = sys.argv[1]
-    relay_key_sub_folder = f"{folder_path}/relay_id_{proxy_id}"
+    for key in recv_socket_list:
+        recv_socket_list[key].close()
 
-    if not os.path.isdir(relay_key_sub_folder):
-        os.makedirs(relay_key_sub_folder)
+    proxy.relay_socket.close()
 
-
-    generate_keys(proxy_id, relay_key_sub_folder)
-
-
+# ---- MAIN ----
 if __name__ == "__main__":
     main()
-  
