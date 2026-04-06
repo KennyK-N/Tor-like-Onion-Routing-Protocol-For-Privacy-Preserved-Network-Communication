@@ -10,6 +10,8 @@ import crypto_utils
 from threading import Lock
 import pickle
 import packet as PacketFormat
+import json
+
 # FOr demo purposes leave it like this for now other wise it will take forever to clean up
 HOST = "127.0.0.1"
 SERVER_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
@@ -26,7 +28,6 @@ class Server:
 
 
     def server_logic(self, client_sock, socket_name):
-        print(f"Incoming thread handling connection from prev node")
         retry_counter_data = 0
         NUM_ATTEMPTS_DATA = 10
         NUM_ATTEMPTS_TIME_OUT = 2
@@ -60,12 +61,36 @@ class Server:
                     outer_packet = PacketFormat.to_obj_rep(data)
                 else:
                     continue
-                data = PacketFormat.to_obj_rep(outer_packet.payload)  
-                message = data.payload
+                data = PacketFormat.to_obj_rep(outer_packet.payload)
+                
+                message= data.payload
                 print(f"Got a packet, sending message back to client, data is: {message} from client id: {outer_packet.client_id}")
-                if (outer_packet.exchange == False): #TODO DELETE LATER
-                    print("NOT EXCHANGE PACKET") #TODO DELETE LATER
-                packet = PacketFormat.Packet(payload="This is from server")
+                
+                try:
+                    message = json.loads(message.decode())
+                    print(message)
+                    host = message["server"]
+                    port = int(message["port"])
+
+                    request = f"GET / HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+                    sock.connect((host, port))
+                    sock.sendall(request.encode())
+
+                    response = b""
+                    while True:
+                        chunk = sock.recv(256)
+                        if not chunk:
+                            raise Exception("Non valid Data")
+                        response += chunk
+                        break
+                    sock.close()
+                    message = response.decode(errors='ignore')
+                except Exception as error:
+                    message = "This is from server"
+
+                packet = PacketFormat.Packet(payload=message)
                 outer_packet.payload = PacketFormat.to_bytes_rep(packet)
                 outer_packet.client_id = self.server_id
                 client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
@@ -115,7 +140,7 @@ class Server:
 
             #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
             while(True):
-                temp = input("For menu or smthing: ")
+                temp = input()
                 if (temp == "exit"): # THIS EXIT IS GOOD
                     break
 

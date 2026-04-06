@@ -57,24 +57,6 @@ class Proxy:
             os.remove(self.file_path)
             print(f"Removed proxy {self.proxy_id} from active_proxies")
 
-    # def relay_send(self, client_name, data):
-    #     sock = self.send_sockets.get(client_name)
-    #     if not sock:
-    #         print(f"No socket found for {client_name}")
-    #         return False
-    #     try:
-    #         sock.sendall(data) 
-    #         return True
-    #     except Exception as e:
-    #         print(f"Error sending to {client_name}: {e}, closing socket.")
-    #         try:
-    #             sock.close()
-    #         except Exception as close_err:
-    #             print(f"Error closing socket for {client_name}: {close_err}")
-    #         finally:
-    #             self.send_sockets.pop(client_name, None)
-    #             return False
-
     # Handle Server-> Client Commmunication
     def forward_listener(self, forward_sock, client_sock, symm_key):
         try:
@@ -111,6 +93,7 @@ class Proxy:
                     if not isinstance(data.payload, bytes):
                         msg = bytes(data.payload, 'utf-8')
                         data.payload = msg
+                    print(f"Response path, payload before encryption: {data.payload.hex()}")
                     data = PacketFormat.to_bytes_rep(data)
                 else:
                     data = outer_packet.payload
@@ -127,12 +110,11 @@ class Proxy:
                     h.update(message)
                     digest = h.finalize()
                 
-                    print("THIS WORKS I GUESS")
-
+                outer_packet.hop+=1
                 packet = PacketFormat.Packet(iv=iv, payload=encrypted_data, HMAC=digest)
                 outer_packet.payload =PacketFormat.to_bytes_rep(packet)
                 client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
-                print("Forwarded response back")
+                # print("Forwarded response back")
 
         except Exception as e:
             _, _, tb = sys.exc_info()
@@ -146,7 +128,6 @@ class Proxy:
 
     # Handle Client -> Server communication
     def relay_logic(self, client_sock, socket_name):
-        print(f"Incoming thread handling connection from prev node")
         retry_counter_data = 0
         retry_counter_timeout = 0
         forward_sock = None 
@@ -192,7 +173,8 @@ class Proxy:
                     message = packet.payload
                     h.update(message)
                     h.verify(packet.HMAC)
-                    print("HMAC SUCCESSFULLY VERIFIED, REQUEST") #TODO REMOVE POSSIBLY
+                    # print("HMAC SUCCESSFULLY VERIFIED, REQUEST") #TODO REMOVE POSSIBLY
+                    print(f"Receive path, payload before decryption: {packet.payload.hex()}")
 
                 # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
                 if symm_key is not None:
@@ -243,7 +225,7 @@ class Proxy:
                     )
                        
                     # Send back public key and salt so client can derive symmetric key
-                    print("Sending key exchange")
+                    # print("Sending key exchange")
                     outer_packet.payload = PacketFormat.to_bytes_rep(packet)
                     client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
 
@@ -296,7 +278,7 @@ class Proxy:
 
             #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
             while(True):
-                temp = input("For menu or smthing: ")
+                temp = input()
                 if (temp == "exit"): # THIS EXIT IS GOOD
                     break
 
