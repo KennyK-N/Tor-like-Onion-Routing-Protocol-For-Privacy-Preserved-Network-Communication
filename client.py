@@ -16,6 +16,7 @@ ACTIVE_PROXIES_DIR = "active_proxies"
 MIN_PROXY = 3
 NUM_HOP = 3 
 MAX_NUM_NON_EXCHANGE_MESSAGE_RECV_PER_SESSION = 1 # NONE = INFINITY
+HOST = "127.0.0.1"
 
 class Client:
     def __init__(self):
@@ -29,7 +30,7 @@ class Client:
         self.key_exchange_begin = 0
         self.bytes_received = 0
         self.bytes_send = 0
-        self.session_end = 0
+        self.session_end = None
         self.session_start = 0
 
     def discover_proxies(self):
@@ -71,13 +72,19 @@ class Client:
         return random.sample(proxy_ids, k)
 
     # Connects to the first proxy in the circuit and starts a listener thread
-    def connect_to_circuit(self, proxies, circuit):
+    def connect_to_circuit(self, proxies, circuit, Random_Port=True, port=None):
         first_proxy_id = circuit[0]
         proxy_info = proxies[first_proxy_id]
         host = proxy_info["host"]
         port = proxy_info["port"]
 
         proxy_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        if Random_Port:
+            proxy_sock.bind((host, 0))
+        else:
+            proxy_sock.bind((host, port))
+
         self.session_start = datetime.datetime.now()
         proxy_sock.connect((host, port))
         print(f"Client IP addr and port: {proxy_sock.getsockname()}")
@@ -336,6 +343,7 @@ def main():
 
     # Connect to first proxy and start listener
     #UNCOMMENT THIS FOR TESTING PURPOSE
+    # port = 50000
     client.connect_to_circuit(proxies, circuit)
     setup_signal_handlers(client)
     client.key_exchange(circuit, proxies)
