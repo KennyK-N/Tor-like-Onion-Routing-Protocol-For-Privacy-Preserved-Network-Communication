@@ -331,7 +331,8 @@ def print_stat(client):
         print(f"Recv Throughput: {recv_throughput / 1000:.2f} kbps")
         print(f"Send Throughput: {send_throughput / 1000:.2f} kbps")
 
-def main():
+#Basic Testing for Manual Testing
+def test():
     client = Client()
     proxies = client.discover_proxies()
 
@@ -371,5 +372,6 @@ def main():
     while(client.running):
         pass
     print_stat(client)
+    
 if __name__ == "__main__":
-    main()
+    test()

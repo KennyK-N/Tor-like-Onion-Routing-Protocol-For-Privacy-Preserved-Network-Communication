@@ -1,21 +1,20 @@
-import queue
 import uuid
 import signal
 import sys
 import os
 import socket
 import threading
-import queue
 import crypto_utils
 from threading import Lock
 import pickle
 import packet as PacketFormat
 import json
 
-# FOr demo purposes leave it like this for now other wise it will take forever to clean up
+# For demo purposes leave it like this for now other wise it will take forever to clean up
 HOST = "127.0.0.1"
 SERVER_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
 DAEMON_FLAG=True
+
 class Server:
     def __init__(self, host, Random_Port=True, port=None):
         self.host = host
@@ -174,7 +173,8 @@ def setup_signal_handlers(server):
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-def main():
+#Basic Testing for Manual Testing
+def test():
     # port = 50004
     # server = Server(HOST, False, port)
     server = Server(HOST)
@@ -194,6 +194,6 @@ def main():
             continue
 
     server.relay_socket.close()
-# ---- MAIN ----
+
 if __name__ == "__main__":
-    main()
+    test()

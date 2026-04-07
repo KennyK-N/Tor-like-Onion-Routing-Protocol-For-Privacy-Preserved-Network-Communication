@@ -317,7 +317,8 @@ def setup_signal_handlers(proxy):
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-def main():
+#Basic Testing for Manual Testing
+def test():
     # port_list = [50001, 50002, 50003]
     # proxy = Proxy(HOST, False, port_list)
     proxy = Proxy(HOST)
@@ -336,6 +337,5 @@ def main():
 
     proxy.relay_socket.close()
 
-# ---- MAIN ----
 if __name__ == "__main__":
-    main()
+    test()
