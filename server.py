@@ -17,11 +17,16 @@ HOST = "127.0.0.1"
 SERVER_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
 DAEMON_FLAG=True
 class Server:
-    def __init__(self, host):
+    def __init__(self, host, Random_Port=True, port=None):
         self.host = host
         self.running = True
         self.relay_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.relay_socket.bind((host, 0))
+
+        if Random_Port:
+            self.relay_socket.bind((host, 0))
+        else:
+            self.relay_socket.bind((host, port))
+
         self.host, self.port = self.relay_socket.getsockname()
         self.server_id = str(uuid.uuid4())
         self.receive_sockets={}
@@ -76,6 +81,7 @@ class Server:
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
                     sock.connect((host, port))
+                    print(f"Created socket with the following ip address and port: {sock.getsockname()}")
                     sock.sendall(request.encode())
 
                     response = b""
@@ -169,6 +175,8 @@ def setup_signal_handlers(server):
     signal.signal(signal.SIGTERM, shutdown_handler)
 
 def main():
+    # port = 50004
+    # server = Server(HOST, False, port)
     server = Server(HOST)
     setup_signal_handlers(server)
     server.start()

@@ -23,7 +23,7 @@ DAEMON_FLAG=True
 client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
 
 class Proxy:
-    def __init__(self, host):
+    def __init__(self, host, Random_Port=True, port_lst=None):
         self.host = host
         self.proxy_id = str(uuid.uuid4())
         os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True) # make sure directory exists
@@ -34,7 +34,19 @@ class Proxy:
 
         # Socket for incoming connections (from prev node)
         self.relay_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.relay_socket.bind((host, 0))
+        
+        try:
+            if Random_Port:
+                self.relay_socket.bind((host, 0))
+            else:
+                for i in range(len(port_lst)):
+                    try:
+                        self.relay_socket.bind((host, port_lst[i]))
+                    except:
+                        continue
+        except:
+            self.relay_socket.bind((host, 0))
+
         self.host, self.port = self.relay_socket.getsockname()
 
         # Info file for this proxy
@@ -306,6 +318,8 @@ def setup_signal_handlers(proxy):
     signal.signal(signal.SIGTERM, shutdown_handler)
 
 def main():
+    # port_list = [50001, 50002, 50003]
+    # proxy = Proxy(HOST, False, port_list)
     proxy = Proxy(HOST)
     proxy.register()
     setup_signal_handlers(proxy)
