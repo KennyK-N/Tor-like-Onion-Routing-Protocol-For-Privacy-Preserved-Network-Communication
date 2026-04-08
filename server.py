@@ -175,9 +175,9 @@ def setup_signal_handlers(server):
 
 #Basic Testing for Manual Testing
 def test():
-    # port = 50004
-    # server = Server(HOST, False, port)
-    server = Server(HOST)
+    port = 50004
+    server = Server(HOST, False, port)
+    # server = Server(HOST)
     setup_signal_handlers(server)
     server.start()
 

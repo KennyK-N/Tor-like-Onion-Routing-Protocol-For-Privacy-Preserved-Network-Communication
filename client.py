@@ -72,7 +72,7 @@ class Client:
         return random.sample(proxy_ids, k)
 
     # Connects to the first proxy in the circuit and starts a listener thread
-    def connect_to_circuit(self, proxies, circuit, Random_Port=True, port=None):
+    def connect_to_circuit(self, proxies, circuit, Random_Port=True, port_s=None):
         first_proxy_id = circuit[0]
         proxy_info = proxies[first_proxy_id]
         host = proxy_info["host"]
@@ -83,7 +83,7 @@ class Client:
         if Random_Port:
             proxy_sock.bind((host, 0))
         else:
-            proxy_sock.bind((host, port))
+            proxy_sock.bind((host, port_s))
 
         self.session_start = datetime.datetime.now()
         proxy_sock.connect((host, port))
@@ -344,14 +344,15 @@ def test():
 
     # Connect to first proxy and start listener
     #UNCOMMENT THIS FOR TESTING PURPOSE
-    # port = 50000
+    # port_s = 50000
     client.connect_to_circuit(proxies, circuit)
     setup_signal_handlers(client)
     client.key_exchange(circuit, proxies)
 
     # serveraddr = input("Enter Server IP: ")
     serveraddr = "127.0.0.1"
-    port = input("Enter Server Port #: ")
+    port = 50004
+    # port = input("Enter Server Port #: ")
 
     # status = True
     # try:
