@@ -12,8 +12,9 @@ import json
 
 # For demo purposes leave it like this for now other wise it will take forever to clean up
 HOST = "127.0.0.1"
-SERVER_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
-DAEMON_FLAG=True
+SERVER_TIMEOUT = None  # SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
+DAEMON_FLAG = True
+
 
 class Server:
     def __init__(self, host, Random_Port=True, port=None):
@@ -28,8 +29,7 @@ class Server:
 
         self.host, self.port = self.relay_socket.getsockname()
         self.server_id = str(uuid.uuid4())
-        self.receive_sockets={}
-
+        self.receive_sockets = {}
 
     def server_logic(self, client_sock, socket_name):
         retry_counter_data = 0
@@ -51,9 +51,8 @@ class Server:
                         retry_counter_timeout += 1
                         continue
 
-                retry_counter_timeout=0
+                retry_counter_timeout = 0
 
-                # DO NOT DELETE THIS, its when the client abrubtly closes the connection, this allows the relay to close the connection as well
                 if not data:
                     if retry_counter_data > NUM_ATTEMPTS_DATA:
                         raise Exception("Failed to receive Data from client or relay")
@@ -66,21 +65,27 @@ class Server:
                 else:
                     continue
                 data = PacketFormat.to_obj_rep(outer_packet.payload)
-                
-                message= data.payload
-                print(f"Got a packet, sending message back to client, data is: {message} from client id: {outer_packet.client_id}")
-                
+
+                message = data.payload
+                print(
+                    f"Got a packet, sending message back to client, data is: {message} from client id: {outer_packet.client_id}"
+                )
+
                 try:
                     message = json.loads(message.decode())
                     print(message)
                     host = message["server"]
                     port = int(message["port"])
 
-                    request = f"GET / HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+                    request = (
+                        f"GET / HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+                    )
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
                     sock.connect((host, port))
-                    print(f"Created socket with the following ip address and port: {sock.getsockname()}")
+                    print(
+                        f"Created socket with the following ip address and port: {sock.getsockname()}"
+                    )
                     sock.sendall(request.encode())
 
                     response = b""
@@ -91,7 +96,7 @@ class Server:
                         response += chunk
                         break
                     sock.close()
-                    message = response.decode(errors='ignore')
+                    message = response.decode(errors="ignore")
                 except Exception as error:
                     message = "This is from server"
 
@@ -127,7 +132,11 @@ class Server:
 
                 t = threading.Thread(
                     target=self.server_logic,
-                    args=(client_sock,socket_name,), daemon=True
+                    args=(
+                        client_sock,
+                        socket_name,
+                    ),
+                    daemon=True,
                 )
 
                 t.start()
@@ -137,26 +146,29 @@ class Server:
                 print("Error: ", e)
                 continue
 
-
     def start(self):
         try:
-            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port), daemon=DAEMON_FLAG)
+            self.thread = threading.Thread(
+                target=self.start_relay,
+                args=(self.relay_socket, self.host, self.port),
+                daemon=DAEMON_FLAG,
+            )
             self.thread.start()
 
-            #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
-            while(True):
+            while True:
                 temp = input()
-                if (temp == "exit"): # THIS EXIT IS GOOD
+                if temp == "exit":
                     break
 
         finally:
             self.running = False
 
+
 # ---- graceful shutdown handling ----
 def setup_signal_handlers(server):
     def shutdown_handler(signum, frame):
         print("\nShutting down server...")
-        server.running=False
+        server.running = False
         if not DAEMON_FLAG:
             server.thread.join()
         server.relay_socket.close()
@@ -173,7 +185,8 @@ def setup_signal_handlers(server):
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-#Basic Testing for Manual Testing
+
+# Basic Testing for Manual Testing
 def test():
     port = 50004
     server = Server(HOST, False, port)
@@ -194,6 +207,7 @@ def test():
             continue
 
     server.relay_socket.close()
+
 
 if __name__ == "__main__":
     test()

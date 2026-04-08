@@ -14,27 +14,31 @@ from cryptography.hazmat.primitives import hashes, hmac
 ACTIVE_PROXIES_DIR = "active_proxies"
 HOST = "127.0.0.1"
 # FOr demo purposes leave it like this for now other wise it will take forever to clean up
-PROXY_TIMEOUT = None #SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
+PROXY_TIMEOUT = None  # SET TO NONE FOR BLOCKING MODE, ONLY USE WHEN DAEMON IS TRUE
 NUM_ATTEMPTS_DATA = 10
 NUM_ATTEMPTS_TIME_OUT = 5
-DAEMON_FLAG=True
+DAEMON_FLAG = True
 
-# Only remove the key from when the session is finish
-client_sem_key={} #{client_sock.getpeername(), and the key from DF}, KEY LAST FOR ENTIRE SESSION, I.E CLIENT IS CONNECTED TO THE RELAY
 
 class Proxy:
     def __init__(self, host, Random_Port=True, port_lst=None):
         self.host = host
         self.proxy_id = str(uuid.uuid4())
-        os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True) # make sure directory exists
+        os.makedirs(ACTIVE_PROXIES_DIR, exist_ok=True)  # make sure directory exists
 
         # Generate verification key pair for the relay
-        self.private_sign_key, self.public_ver_key = crypto_utils.generate_verification_keys()
-        public_ver_key_string = crypto_utils.serialize_public_key(self.public_ver_key).decode('utf-8').replace("\n", "\\n")
+        self.private_sign_key, self.public_ver_key = (
+            crypto_utils.generate_verification_keys()
+        )
+        public_ver_key_string = (
+            crypto_utils.serialize_public_key(self.public_ver_key)
+            .decode("utf-8")
+            .replace("\n", "\\n")
+        )
 
         # Socket for incoming connections (from prev node)
         self.relay_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
+
         try:
             if Random_Port:
                 self.relay_socket.bind((host, 0))
@@ -52,10 +56,12 @@ class Proxy:
         # Info file for this proxy
         self.file_path = os.path.join(ACTIVE_PROXIES_DIR, f"{self.proxy_id}.txt")
         # Format: proxy_id, host, port, public_ver_key
-        self.entry = f"{self.proxy_id},{self.host},{self.port},{public_ver_key_string}\n" 
+        self.entry = (
+            f"{self.proxy_id},{self.host},{self.port},{public_ver_key_string}\n"
+        )
 
         self.running = True
-        self.receive_sockets={} # For sockets where the relay is receiving
+        self.receive_sockets = {}  # For sockets where the relay is receiving
 
         self.thread = None
 
@@ -87,7 +93,7 @@ class Proxy:
                         retry_counter_timeout += 1
                         continue
 
-                retry_counter_timeout=0
+                retry_counter_timeout = 0
 
                 if not data:
                     if retry_counter_data > NUM_ATTEMPTS_DATA:
@@ -99,32 +105,34 @@ class Proxy:
                 retry_counter_data = 0
                 outer_packet = PacketFormat.to_obj_rep(data)
 
-                if(outer_packet.exchange==False):
+                if outer_packet.exchange == False:
                     data = PacketFormat.to_obj_rep(outer_packet.payload)
 
                     if not isinstance(data.payload, bytes):
-                        msg = bytes(data.payload, 'utf-8')
+                        msg = bytes(data.payload, "utf-8")
                         data.payload = msg
-                    print(f"Response path, payload before encryption: {data.payload.hex()}")
+                    print(
+                        f"Response path, payload before encryption: {data.payload.hex()}"
+                    )
                     data = PacketFormat.to_bytes_rep(data)
                 else:
                     data = outer_packet.payload
 
-                iv = os.urandom(16) 
+                iv = os.urandom(16)
                 cipher = crypto_utils.create_cipher(symm_key, iv)
                 encrypted_data = crypto_utils.aes_encrypt(cipher, data)
-                
+
                 digest = None
-                
-                if(outer_packet.exchange==False):
+
+                if outer_packet.exchange == False:
                     h = hmac.HMAC(symm_key, hashes.SHA256())
                     message = encrypted_data
                     h.update(message)
                     digest = h.finalize()
-                
-                outer_packet.hop+=1
+
+                outer_packet.hop += 1
                 packet = PacketFormat.Packet(iv=iv, payload=encrypted_data, HMAC=digest)
-                outer_packet.payload =PacketFormat.to_bytes_rep(packet)
+                outer_packet.payload = PacketFormat.to_bytes_rep(packet)
                 client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
                 # print("Forwarded response back")
 
@@ -142,8 +150,8 @@ class Proxy:
     def relay_logic(self, client_sock, socket_name):
         retry_counter_data = 0
         retry_counter_timeout = 0
-        forward_sock = None 
-        symm_key = None # symmetric key from key exchange
+        forward_sock = None
+        symm_key = None  # symmetric key from key exchange
         try:
             client_sock.settimeout(PROXY_TIMEOUT)
             while self.running:
@@ -159,7 +167,7 @@ class Proxy:
                         retry_counter_timeout += 1
                         continue
 
-                retry_counter_timeout=0
+                retry_counter_timeout = 0
 
                 # DO NOT DELETE THIS, its when the client abrubtly closes the connection, this allows the relay to close the connection as well
                 if not data:
@@ -168,76 +176,84 @@ class Proxy:
                     else:
                         retry_counter_data += 1
                         continue
-                
+
                 retry_counter_data = 0
 
                 # load data using pickle if needed
                 if isinstance(data, bytes):
                     outer_packet = PacketFormat.to_obj_rep(data)
                 else:
-                    continue  
+                    continue
 
                 packet = PacketFormat.to_obj_rep(outer_packet.payload)
 
-                #TODO IMPLEMENT HMAC VERIFY HERE
-                if(outer_packet.exchange==False and packet.HMAC != None):
+                if outer_packet.exchange == False and packet.HMAC != None:
                     h = hmac.HMAC(symm_key, hashes.SHA256())
                     message = packet.payload
                     h.update(message)
                     h.verify(packet.HMAC)
-                    # print("HMAC SUCCESSFULLY VERIFIED, REQUEST") #TODO REMOVE POSSIBLY
-                    print(f"Receive path, payload before decryption: {packet.payload.hex()}")
+                    print(
+                        f"Receive path, payload before decryption: {packet.payload.hex()}"
+                    )
 
                 # Decrypt payload if possible, if symm_key is None, it means this packet is for key exchange, so skip decryption and just do the exchange
                 if symm_key is not None:
-                    cipher = crypto_utils.create_cipher(symm_key, packet.iv) 
+                    cipher = crypto_utils.create_cipher(symm_key, packet.iv)
                     payload = crypto_utils.aes_decrypt(cipher, packet.payload)
                 else:
                     payload = packet.payload
 
-                try: # Check if payload is a pickled Packet
+                try:  # Check if payload is a pickled Packet
                     payload = PacketFormat.to_obj_rep(payload)
                 except Exception:
                     pass
-                if isinstance(payload, PacketFormat.Packet): # If there's an internal packet, it means this should be forwarded
-                    # Start a listener thread for the forward if we are forwarding for the first time, 
+                if isinstance(
+                    payload, PacketFormat.Packet
+                ):  # If there's an internal packet, it means this should be forwarded
+                    # Start a listener thread for the forward if we are forwarding for the first time,
                     # otherwise we can just use the same forward socket since the listener thread would already be running
                     if forward_sock is None:
                         forward_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         forward_sock.connect((payload.dst_addr, payload.dst_port))
-                        
+
                         # start listener thread so we can receive the response back
                         t = threading.Thread(
                             target=self.forward_listener,
                             # Note that symm_key will not be None, since first packet will be unlayered, for key exchange, so won't enter this if statement
                             args=(forward_sock, client_sock, symm_key),
-                            daemon=True
+                            daemon=True,
                         )
                         t.start()
                     # Forward the internal packet to the next relay/server
                     outer_packet.payload = PacketFormat.to_bytes_rep(payload)
                     outer_packet.hop = outer_packet.hop - 1
                     forward_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
-                
-                else: # If the payload isn't a packet, it is for a key exchange with this relay
+
+                else:  # If the payload isn't a packet, it is for a key exchange with this relay
                     # Generate key pair and salt for the exchange
                     private, public = crypto_utils.generate_ecdh_keypair()
-                    salt = os.urandom(16) # Generate random salt
-                    
+                    salt = os.urandom(16)  # Generate random salt
+
                     # Get symmetric key using the client's public key and the relay's private key
-                    symm_key = crypto_utils.derive_shared_key(private, crypto_utils.load_public_key(payload), salt)
+                    symm_key = crypto_utils.derive_shared_key(
+                        private, crypto_utils.load_public_key(payload), salt
+                    )
                     packet = PacketFormat.Packet(
-                        payload = {
+                        payload={
                             "public_key": crypto_utils.serialize_public_key(public),
                             "salt": salt,
-                            "key_signature": crypto_utils.sign_message(self.private_sign_key, crypto_utils.serialize_public_key(public)),
-                            "salt_signature": crypto_utils.sign_message(self.private_sign_key, salt),
-                            "test_message": "encryption/decryption successful"
+                            "key_signature": crypto_utils.sign_message(
+                                self.private_sign_key,
+                                crypto_utils.serialize_public_key(public),
+                            ),
+                            "salt_signature": crypto_utils.sign_message(
+                                self.private_sign_key, salt
+                            ),
+                            "test_message": "encryption/decryption successful",
                         }
                     )
-                       
+
                     # Send back public key and salt so client can derive symmetric key
-                    # print("Sending key exchange")
                     outer_packet.payload = PacketFormat.to_bytes_rep(packet)
                     client_sock.sendall(PacketFormat.to_bytes_rep(outer_packet))
 
@@ -270,7 +286,11 @@ class Proxy:
 
                 t = threading.Thread(
                     target=self.relay_logic,
-                    args=(client_sock,socket_name,), daemon=True
+                    args=(
+                        client_sock,
+                        socket_name,
+                    ),
+                    daemon=True,
                 )
 
                 t.start()
@@ -281,31 +301,33 @@ class Proxy:
                 print("Error: ", e)
                 continue
 
-
     def start(self):
         try:
-            self.thread = threading.Thread(target=self.start_relay, args=(self.relay_socket, self.host, self.port),
-            daemon=DAEMON_FLAG)
+            self.thread = threading.Thread(
+                target=self.start_relay,
+                args=(self.relay_socket, self.host, self.port),
+                daemon=DAEMON_FLAG,
+            )
             self.thread.start()
 
-            #TODO: Make interactable like list options, e.g 1. do something, 2. do something, 3.exit
-            while(True):
+            while True:
                 temp = input()
-                if (temp == "exit"): # THIS EXIT IS GOOD
+                if temp == "exit":
                     break
 
         finally:
             self.unregister()
             self.running = False
 
+
 # ---- graceful shutdown handling ----
 def setup_signal_handlers(proxy):
     def shutdown_handler(signum, frame):
         print("\nShutting down proxy...")
         proxy.unregister()
-        proxy.running=False
+        proxy.running = False
         if not DAEMON_FLAG:
-            proxy.thread.join() 
+            proxy.thread.join()
         proxy.relay_socket.close()
         recv_socket_list = proxy.receive_sockets
 
@@ -317,7 +339,8 @@ def setup_signal_handlers(proxy):
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-#Basic Testing for Manual Testing
+
+# Basic Testing for Manual Testing
 def test():
     # port_list = [50001, 50002, 50003]
     # proxy = Proxy(HOST, False, port_list)
@@ -327,7 +350,7 @@ def test():
     proxy.start()
 
     if not DAEMON_FLAG:
-        proxy.thread.join() # PUT THIS BACK IF U DISABLE DAEMON
+        proxy.thread.join()
     print("Proxy has been successfully shut downed")
     # clean up
     recv_socket_list = proxy.receive_sockets
@@ -336,6 +359,7 @@ def test():
         recv_socket_list[key].close()
 
     proxy.relay_socket.close()
+
 
 if __name__ == "__main__":
     test()
