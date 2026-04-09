@@ -196,7 +196,7 @@ def test():
 
     if not DAEMON_FLAG:
         server.thread.join()
-    print("Server has been successfully shut downed")
+    print("Server has been successfully shutdown")
     # clean up
     recv_socket_list = server.receive_sockets
 

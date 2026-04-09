@@ -139,7 +139,7 @@ class Proxy:
         except Exception as e:
             _, _, tb = sys.exc_info()
 
-            print(f"Forward Listener error: {e} at line {tb.tb_lineno}")
+
         finally:
             try:
                 forward_sock.close()
@@ -260,10 +260,7 @@ class Proxy:
         except Exception as e:
             _, _, tb = sys.exc_info()
 
-            print(f"Incoming thread error: {e} at line {tb.tb_lineno}")
-
         finally:
-            print(f"Closed connection for {socket_name}")
 
             try:
                 client_sock.close()
@@ -351,7 +348,7 @@ def test():
 
     if not DAEMON_FLAG:
         proxy.thread.join()
-    print("Proxy has been successfully shut downed")
+    print("Proxy has been successfully shutdown")
     # clean up
     recv_socket_list = proxy.receive_sockets
 
