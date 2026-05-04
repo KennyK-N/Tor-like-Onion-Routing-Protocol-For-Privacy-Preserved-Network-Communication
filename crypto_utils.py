@@ -4,11 +4,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from cryptography.hazmat.primitives import keywrap
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import ec
-import os
 
 AES_key_length = 32  # length in bytes 16 24 or 32
 iv_key_length = 16

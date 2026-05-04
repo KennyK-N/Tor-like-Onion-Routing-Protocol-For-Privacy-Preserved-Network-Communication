@@ -5,9 +5,7 @@ import threading
 import sys
 import crypto_utils
 import packet as PacketFormat
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives import hashes, hmac
-import pickle
 import uuid
 import datetime
 import signal
@@ -413,33 +411,16 @@ def test():
     print(f"Current Client_uid: {client.CLIENT_ID}")
 
     # Connect to first proxy and start listener
-    # port_s = 50000
     client.connect_to_circuit(proxies, circuit)
     setup_signal_handlers(client)
     client.key_exchange(circuit, proxies)
 
-    # serveraddr = input("Enter Server IP: ")
     serveraddr = "127.0.0.1"
     port = 50004
-    # port = input("Enter Server Port #: ")
-
-    # status = True
-    # try:
-    #     while (client.running and status):
-    #         message = input("Enter message to send to server (or 'exit' to quit): ")
-    #         if message.lower() == "exit":
-    #             break
-    #         status = client.send_input_to_proxy(circuit, proxies, message, serveraddr, port)
-    # except:
-    #     pass
-    # finally:
-    #     client.running=False
-    #     client.proxy_sock.close()
 
     status = client.send_input_to_proxy(
         circuit, proxies, '{"server": "www.google.com", "port": "80"}', serveraddr, port
     )
-    # status = client.send_input_to_proxy(circuit, proxies, '{"server": "example.com", "port": "80"}', serveraddr, port)
 
     while client.running:
         pass

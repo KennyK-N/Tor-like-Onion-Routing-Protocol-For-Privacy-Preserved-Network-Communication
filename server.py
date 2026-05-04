@@ -1,12 +1,8 @@
 import uuid
 import signal
 import sys
-import os
 import socket
 import threading
-import crypto_utils
-from threading import Lock
-import pickle
 import packet as PacketFormat
 import json
 
@@ -190,7 +186,6 @@ def setup_signal_handlers(server):
 def test():
     port = 50004
     server = Server(HOST, False, port)
-    # server = Server(HOST)
     setup_signal_handlers(server)
     server.start()
 

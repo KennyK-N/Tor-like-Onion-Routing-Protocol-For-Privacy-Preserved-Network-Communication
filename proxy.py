@@ -4,10 +4,7 @@ import sys
 import os
 import socket
 import threading
-import queue
 import crypto_utils
-from threading import Lock
-import pickle
 import packet as PacketFormat
 from cryptography.hazmat.primitives import hashes, hmac
 
@@ -339,8 +336,6 @@ def setup_signal_handlers(proxy):
 
 # Basic Testing for Manual Testing
 def test():
-    # port_list = [50001, 50002, 50003]
-    # proxy = Proxy(HOST, False, port_list)
     proxy = Proxy(HOST)
     proxy.register()
     setup_signal_handlers(proxy)
